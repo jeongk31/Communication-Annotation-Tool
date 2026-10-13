@@ -49,6 +49,7 @@ _PROGRESS_INTERVAL_SECONDS = 2.0
 # run's page can show everything the browser view shows. Bounded so a very large
 # run cannot exhaust memory while it is held.
 _ROWS_FILENAME = "rows.json"
+_CONFIG_FILENAME = "run_config.json"
 _MAX_KEPT_ROWS = 20000
 # Episodes to observe before an estimate is worth showing.
 _ETA_MIN_SAMPLES = 5
@@ -283,6 +284,7 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
                     result_path = str(update_event.get("file_path") or "")
                     status = "completed" if (coded > 0 or errors == 0) else "failed"
                     _write_rows(result_path, rows)
+                    _write_config(result_path, config)
 
                 now = time.monotonic()
                 if now - last_write >= _PROGRESS_INTERVAL_SECONDS:
@@ -333,6 +335,52 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
         logger.info("job %s finish notification: %s", job_id, outcome)
 
     logger.info("job %s finished as %s in %.1fs", job_id, status, time.monotonic() - clock)
+
+
+# What the run's own page needs to render the ordinary results view. API keys are
+# not among them and must never be written here.
+_CONFIG_KEYS = (
+    "file_name", "message_column", "identifier_columns", "identity_column",
+    "order_column", "order_direction", "context", "codebook", "participants",
+    "runs_per_model", "rows_as_units",
+)
+
+
+def _write_config(result_path: str, config: dict) -> None:
+    """Store what the results view needs beside the results, minus credentials.
+
+    The codebook and column mapping are the researcher's own definitions, not
+    participant data, and the page cannot show validation, agreement or exports
+    without them. They expire with the results like everything else here.
+    """
+    if not result_path:
+        return
+    kept = {key: config.get(key) for key in _CONFIG_KEYS if config.get(key) is not None}
+    # Provider and model names only — never the key that was used to run.
+    kept["model_slots"] = [
+        {"provider": slot.get("provider", ""), "model": slot.get("model", "")}
+        for slot in (config.get("model_slots") or [])
+        if isinstance(slot, dict)
+    ]
+    try:
+        target = os.path.join(os.path.dirname(result_path), _CONFIG_FILENAME)
+        with open(target, "w", encoding="utf-8") as handle:
+            json.dump(kept, handle, default=str)
+    except OSError:
+        logger.warning("could not store the run configuration", exc_info=True)
+
+
+def read_config(result_path: str) -> dict:
+    """The run's configuration, or an empty dict once the results are gone."""
+    if not result_path:
+        return {}
+    try:
+        target = os.path.join(os.path.dirname(os.path.realpath(result_path)), _CONFIG_FILENAME)
+        with open(target, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def _write_rows(result_path: str, rows: list[dict]) -> None:

@@ -2825,6 +2825,9 @@ textarea.ta-fit{
   border:1px solid var(--purple-lt);border-radius:6px;background:var(--purple-bg);
   font-size:11.5px;color:var(--text-2);
 }
+.enc-progress-eta{
+  margin-left:10px;font-weight:450;color:var(--text-3);font-size:11px;
+}
 .job-key-callout code{
   font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--purple);
 }
@@ -2833,4 +2836,38 @@ textarea.ta-fit{
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:7px 20px;font-size:11.5px;color:var(--text-2);
   background:var(--purple-bg);border-bottom:1px solid var(--border-lt);
+}
+
+/* ═══════════════════════════════════════════════════ */
+/* RUN ESTIMATE CONFIRMATION                           */
+/* ═══════════════════════════════════════════════════ */
+.run-estimate-modal{width:min(520px,calc(100vw - 32px))}
+.run-estimate-figures{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;
+}
+.run-estimate-figure{
+  padding:12px;border:1px solid var(--border-lt);border-radius:8px;
+  background:var(--bg);text-align:center;
+}
+.run-estimate-value{
+  display:block;font-size:19px;font-weight:700;color:var(--text);letter-spacing:-0.02em;
+}
+.run-estimate-label{display:block;margin-top:2px;font-size:10.5px;color:var(--text-3)}
+.run-estimate-breakdown{
+  margin:0 0 14px;font-size:11.5px;color:var(--text-2);line-height:1.5;
+}
+.run-estimate-cost{
+  padding:11px 13px;border:1px solid var(--border-lt);border-radius:8px;background:var(--bg);
+}
+.run-estimate-cost label{display:block;font-size:11.5px;font-weight:600;color:var(--text)}
+.run-estimate-cost-row{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.run-estimate-rate{
+  width:120px;padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius);
+  font-family:var(--sans);font-size:12px;background:var(--surface);color:var(--text);
+}
+.run-estimate-rate:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(91,58,142,.14)}
+.run-estimate-money{font-size:12.5px;font-weight:650;color:var(--purple)}
+.run-estimate-rate-note{margin:7px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.45}
+.run-estimate-caveat{
+  margin:12px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5;
 }

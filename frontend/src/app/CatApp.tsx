@@ -10,7 +10,7 @@ import GuidedTour, { TourStep } from "@/app/tools/GuidedTour";
 import HelpTip from "@/app/tools/HelpTip";
 import PrivacyNotice from "@/app/tools/PrivacyNotice";
 import MenuBar from "@/app/tools/MenuBar";
-import RunProgress, { rememberRunKey, type JobStatus } from "@/app/tools/RunProgress";
+import RunProgress, { rememberRunKey, formatDuration, type JobStatus } from "@/app/tools/RunProgress";
 import UsageStatistics from "@/app/tools/UsageStatistics";
 import Acknowledgements from "@/app/tools/Acknowledgements";
 import { StreamResponseError, streamJsonLines } from "@/lib/streamJsonLines";
@@ -592,6 +592,67 @@ interface ResultExportConfig {
   episodeCount: number;
   modelCallCount: number;
   fingerprint: string;
+}
+
+/** The run configuration CAT keeps beside a server-side run's results. */
+interface ServerRunConfig {
+  message_column?: string;
+  identifier_columns?: string[];
+  identity_column?: string | null;
+  order_column?: string | null;
+  order_direction?: string;
+  context?: { column: string; description: string }[];
+  codebook?: CodebookEntry[];
+  participants?: string[];
+  model_slots?: { provider: string; model: string }[];
+  runs_per_model?: number;
+  rows_as_units?: boolean;
+}
+
+/**
+ * Rebuild the export configuration from what the server stored with the run.
+ *
+ * Opened by link, this browser has no setup of its own — the validation,
+ * agreement and export machinery all read this, so without it the run's page
+ * could only offer a download.
+ */
+function exportConfigFromServer(config: ServerRunConfig, episodeCount: number): ResultExportConfig {
+  const models = (config.model_slots ?? []).map((slot) => ({
+    provider: slot.provider,
+    model: slot.model,
+  }));
+  const runsPerModel = config.runs_per_model ?? 1;
+  return {
+    messageColumn: config.message_column ?? "",
+    identifierColumns: config.identifier_columns ?? [],
+    identityColumn: config.identity_column ?? "",
+    orderColumn: config.order_column ?? "",
+    orderDirection: config.order_direction === "desc" ? "desc" : "asc",
+    context: config.context ?? [],
+    codebook: config.codebook ?? [],
+    participants: config.participants ?? [],
+    models,
+    runsPerModel,
+    rowsAsUnits: !!config.rows_as_units,
+    episodeCount,
+    modelCallCount: models.length * runsPerModel,
+    // Only used to notice the setup changing under a finished run, which cannot
+    // happen for one restored from a link.
+    fingerprint: "",
+  };
+}
+
+/** What a run will cost in time and tokens, shown before it starts. */
+interface RunEstimate {
+  episodes: number;
+  models: number;
+  runs_per_model: number;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  tokens_per_call: number;
+  seconds: number;
+  timing_from_history: boolean;
 }
 
 interface RunProgress {
@@ -1330,6 +1391,15 @@ export default function CatApp() {
   const [serverRunKey, setServerRunKey] = useState("");
   const [serverRunError, setServerRunError] = useState("");
   const [startingServerRun, setStartingServerRun] = useState(false);
+  // A run is a long, paid operation, so it is confirmed against an estimate
+  // rather than started straight from the button.
+  const [pendingRun, setPendingRun] = useState<null | "browser" | "server">(null);
+  const [estimate, setEstimate] = useState<RunEstimate | null>(null);
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [estimateError, setEstimateError] = useState("");
+  // Providers publish prices that change; rather than ship a table that goes
+  // stale and misstate someone's costs, they supply their own rate once.
+  const [tokenRate, setTokenRate] = useState("");
   // Whether this deployment can actually send mail. Until the relay exists the
   // run still works and the link still works, so the option stays — it just does
   // not ask for an address it would never use.
@@ -1443,6 +1513,7 @@ export default function CatApp() {
   useEffect(() => {
     try {
       setRememberedRun(localStorage.getItem("cat_last_server_run") || "");
+      setTokenRate(localStorage.getItem("cat_token_rate") || "");
     } catch { /* private window */ }
   }, []);
 
@@ -2478,6 +2549,7 @@ export default function CatApp() {
   const linkedRunToken = pathname.startsWith("/runs/")
     ? decodeURIComponent(pathname.slice("/runs/".length).split("/")[0])
     : "";
+  const viewingRunLink = activeTool === "run" && !!linkedRunToken;
   const setupIssueByKey = (key: string) => setupIssues.find((issue) => issue.key === key);
   const codebookEditorIssueByKey = (key: string) => visibleCodebookIssues.find((issue) => issue.key === key);
   const codebookEntryIssues = (index: number) => visibleCodebookIssues.filter((issue) => issue.codebookIndex === index);
@@ -2743,10 +2815,17 @@ export default function CatApp() {
         headers: key ? { "X-CAT-Run-Key": key } : undefined,
       });
       if (response.ok) {
-        const data = (await response.json()) as { rows?: CodedRow[] };
+        const data = (await response.json()) as { rows?: CodedRow[]; config?: ServerRunConfig };
         if (Array.isArray(data.rows)) setCodedRows(data.rows);
+        // Opened by link, this browser has no setup of its own to export from.
+        if (data.config && Object.keys(data.config).length > 0) {
+          setResultExportConfig((existing) => existing ?? exportConfigFromServer(data.config!, data.rows?.length ?? 0));
+        }
       }
     } catch { /* the progress panel still shows the outcome and the download */ }
+    // The cards above the results read this; without it a run opened by link
+    // reports 0 processed out of 0.
+    setRunProgress({ current: job.current, total: job.total, percent: 100 });
     setRunComplete({
       total_rows: job.total,
       coded_rows: job.episodes_coded,
@@ -2757,13 +2836,33 @@ export default function CatApp() {
   // Shown while a server-side run is going and kept afterwards, so the link, the
   // access key and the server-side download stay reachable next to the ordinary
   // results view.
-  const serverRunHeader = serverRunToken ? (
+  // Same estimate the server-side run shows, from the rate this run is achieving.
+  // Sequential coding makes the first few episodes predict the rest closely.
+  const browserRunEta = (() => {
+    if (!running || !runStartedAt || !runProgress || runProgress.current < 5) return null;
+    if (runProgress.current >= runProgress.total) return null;
+    const elapsed = (Date.now() - new Date(runStartedAt).getTime()) / 1000;
+    if (elapsed <= 0) return null;
+    return Math.max(0, Math.round((runProgress.total - runProgress.current) * (elapsed / runProgress.current)));
+  })();
+
+  const watchedRunToken = serverRunToken || (viewingRunLink ? linkedRunToken : "");
+  // The results panel defaults to the script view, which is meaningless when the
+  // page *is* a run. Derived rather than set, so opening a link needs no effect.
+  const effectiveRightView = viewingRunLink ? "run" : rightView;
+  // The workspace opens with the config column filling the width, which hides the
+  // results pane entirely. A run link is nothing but results, so treat it as the
+  // side-by-side layout — derived, so opening a link needs no effect.
+  const effectiveLayoutMode = viewingRunLink ? "side" : layoutMode;
+  const serverRunHeader = watchedRunToken ? (
     <>
-      <RunProgress token={serverRunToken} onFinished={adoptServerRunResults} />
-      <p className="job-note">
-        This run continues on the server even if you close CAT. Its own
-        link: <a href={`/runs/${serverRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{serverRunToken.slice(0, 8)}…</a>
-      </p>
+      <RunProgress token={watchedRunToken} onFinished={adoptServerRunResults} />
+      {!viewingRunLink && (
+        <p className="job-note">
+          This run continues on the server even if you close CAT. Its own
+          link: <a href={`/runs/${watchedRunToken}`} target="_blank" rel="noopener noreferrer">/runs/{watchedRunToken.slice(0, 8)}…</a>
+        </p>
+      )}
       {serverRunKey && (
         <div className="job-key-callout">
           <span>Access key for this run</span>
@@ -2776,6 +2875,85 @@ export default function CatApp() {
       )}
     </>
   ) : null;
+
+  /** The run configuration, shared by the estimate and by starting a run. */
+  const buildRunConfig = (fileId: string) => ({
+    file_id: fileId,
+    file_name: uploadResult?.file_name ?? "",
+    message_column: messageColumn,
+    identifier_columns: identifierColumns,
+    identity_column: identityColumn || null,
+    order_column: orderColumn || null,
+    order_direction: orderDirection,
+    experiment_instructions: experimentInstructions,
+    coding_instructions: "",
+    empty_message_handling: emptyMessageHandling,
+    codebook,
+    participants,
+    context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+    model_slots: modelSlots.map(buildSlotPayload),
+    runs_per_model: runsPerModel,
+    source_rows: selectedSourceIndices,
+    row_indices: null,
+  });
+
+  // Ask what the run will take before committing to it. A run is a long,
+  // irreversible spend against the researcher's own API key, and until now the
+  // only way to find out its size was to start it.
+  const openRunConfirmation = async (kind: "browser" | "server") => {
+    const issues = showSetupValidation("run");
+    if (issues.length > 0) return;
+    if (!uploadResult || resultDownloadKind) return;
+    if (kind === "server") {
+      const address = resultEmail.trim();
+      if (emailNotifications && !address) {
+        setServerRunError("Enter the email address we should send the link to.");
+        setOpenPanels((prev) => new Set(prev).add(4));
+        return;
+      }
+      if (address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+        setServerRunError("That does not look like a valid email address.");
+        setOpenPanels((prev) => new Set(prev).add(4));
+        return;
+      }
+      setServerRunError("");
+    }
+    setSetupIssues([]);
+    setPendingRun(kind);
+    setEstimate(null);
+    setEstimateError("");
+    setEstimateLoading(true);
+    try {
+      const init = await gzipJsonInit({ config: buildRunConfig(uploadResult.file_id) });
+      const response = await fetch("/api/coding/estimate", {
+        method: "POST",
+        headers: init.headers,
+        body: init.body,
+      });
+      const raw = await response.text();
+      const firewall = firewallErrorFromText(raw);
+      if (firewall) throw firewall;
+      if (!response.ok) {
+        let detail = response.statusText;
+        try { detail = (JSON.parse(raw) as { detail?: string }).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      setEstimate(JSON.parse(raw) as RunEstimate);
+    } catch (e: unknown) {
+      // The estimate failing must not block the run; the dialog says so and
+      // still offers to start.
+      setEstimateError(e instanceof Error ? e.message : "Could not estimate this run.");
+    } finally {
+      setEstimateLoading(false);
+    }
+  };
+
+  const confirmPendingRun = () => {
+    const kind = pendingRun;
+    setPendingRun(null);
+    if (kind === "server") void handleRunOnServer();
+    else if (kind === "browser") void handleRun();
+  };
 
   const handleRunOnServer = async () => {
     const issues = showSetupValidation("run");
@@ -3767,7 +3945,7 @@ ${agreementSection}
 
       <div className="layout">
         <main className="main">
-          <div className={`tool-page tool-page-fill ${activeTool === "coding" ? "active" : ""}`}>
+          <div className={`tool-page tool-page-fill ${activeTool === "coding" || activeTool === "run" ? "active" : ""}`}>
             {rememberedRun && rememberedRun !== serverRunToken && (
               <div className="resume-run-bar">
                 <span>You have a coding run on the server.</span>
@@ -3781,18 +3959,18 @@ ${agreementSection}
                 >Dismiss</button>
               </div>
             )}
-            <div className="tool-header tool-header-slim">
+            {!viewingRunLink && <div className="tool-header tool-header-slim">
               <p className="tool-citation-note">
                 <strong>Please cite:</strong> Baranski, A., Cooper, D. J., &amp; Lee, J. K. (2026). Are LLMs reliable coders of communication content in economic experiments? <em>NYUAD Division of Social Science Working Paper</em>, #0115. <a href="https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7129638" target="_blank" rel="noopener noreferrer">View paper</a>
               </p>
-            </div>
+            </div>}
 
             <div className={`pipeline-layout split layout-${layoutMode}`} style={{ display: "flex", gap: 0 }}>
               {/* ── Left: Config Column ── */}
               <div
                 className="config-col"
                 style={{
-                  width: tourOpen && layoutMode !== "hidden" ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
+                  width: viewingRunLink ? 0 : tourOpen && layoutMode !== "hidden" ? "50vw" : layoutMode === "hidden" ? 0 : layoutMode === "side" ? "clamp(340px, 40%, 560px)" : "calc(100% - 56px)",
                   minWidth: 0,
                   borderRight: layoutMode === "hidden" && !tourOpen ? "none" : undefined,
                 }}
@@ -4113,10 +4291,6 @@ ${agreementSection}
                         )}
                       </div>
 
-                      <button className="btn btn-ghost btn-xs" onClick={addCodebookRow}>
-                        + Add Variable
-                      </button>
-
                       {/* ── Codebook export ── */}
                       <div className="cb-export-block" id="tour-codebook-download">
                         <div className="cb-export-divider" />
@@ -4418,8 +4592,8 @@ ${agreementSection}
 
               {/* ── Right: Results Column ── */}
               <div className="results-col" id="tour-results-panel" style={{ flex: 1, minWidth: 0 }}>
-                {layoutMode !== "fill" && (<>
-                {(result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
+                {effectiveLayoutMode !== "fill" && (<>
+                {!viewingRunLink && (result || codedRows.length > 0 || running || consoleLogs.length > 0) && (
                   <div className="tab-strip tab-strip-gap">
                     <button className={`tab ${rightView === "run" ? "active" : ""}`} onClick={() => setRightView("run")}>
                       Live Coding {running && <span className="enc-pulse" />}
@@ -4431,16 +4605,18 @@ ${agreementSection}
                 )}
 
                 {/* Run view */}
-                {rightView === "run" && serverRunToken && !runComplete ? (
+                {effectiveRightView === "run" && watchedRunToken && !runComplete ? (
                   <div className="tab-pane">{serverRunHeader}</div>
-                ) : rightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0 || serverRunToken) ? (
+                ) : effectiveRightView === "run" && (running || codedRows.length > 0 || runComplete || consoleLogs.length > 0 || watchedRunToken) ? (
                   <div className="tab-pane">
-                    {serverRunToken && serverRunHeader}
-                    {(runProgress || running) && (
+                    {watchedRunToken && serverRunHeader}
+                    {/* The server-run panel above already shows this run's progress. */}
+                    {!watchedRunToken && (runProgress || running) && (
                       <div className="enc-progress-wrap">
                         <div className="enc-progress-header">
                           <span className="enc-progress-label">
                             {runComplete ? "Coding complete" : running ? `Coding episode ${runProgress?.current ?? 0} of ${runProgress?.total ?? "?"}...` : "Ready"}
+                            {browserRunEta != null && <span className="enc-progress-eta">About {formatDuration(browserRunEta)} remaining</span>}
                           </span>
                           <span className="enc-progress-pct">{runProgress?.percent ?? 0}%</span>
                         </div>
@@ -4668,7 +4844,7 @@ ${agreementSection}
                       </div>
                     )}
                   </div>
-                ) : rightView === "run" ? (
+                ) : effectiveRightView === "run" ? (
                   <div className="results-empty">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
@@ -4680,7 +4856,7 @@ ${agreementSection}
                 ) : null}
 
                 {/* Script view */}
-                {rightView === "script" && result ? (
+                {effectiveRightView === "script" && result ? (
                   <div className="tab-pane">
                     <div className="res-head">
                       <h2>Generated Script</h2>
@@ -4701,7 +4877,7 @@ ${agreementSection}
                       </div>
                     </div>
                   </div>
-                ) : rightView === "script" && !result ? (
+                ) : effectiveRightView === "script" && !result ? (
                   <div className="results-empty">
                     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -4716,7 +4892,7 @@ ${agreementSection}
             </div>
 
             {/* Run bar */}
-            <div id="coding-run-bar" className="run-bar">
+            {!viewingRunLink && <div id="coding-run-bar" className="run-bar">
               <div className="run-bar-summary">
                 {datasetLoaded && (
                   <span className="run-bar-scope">
@@ -4753,7 +4929,7 @@ ${agreementSection}
                 <button
                   className="btn btn-run"
                   disabled={generating || resultDownloadKind !== null || startingServerRun}
-                  onClick={runOnServer ? handleRunOnServer : handleRun}
+                  onClick={() => openRunConfirmation(runOnServer ? "server" : "browser")}
                 >
                   {startingServerRun ? <><span className="spinner" /> Starting</> : "Run Coding"}
                   {modelSlots.length * runsPerModel > 1 && (
@@ -4761,23 +4937,10 @@ ${agreementSection}
                   )}
                 </button>
               )}
-            </div>
+            </div>}
           </div>
 
           {activeTool === "instructions" && <Instructions />}
-          {activeTool === "run" && (
-            <div className="tool-page active">
-              <div className="tool-header">
-                <div>
-                  <h1>Coding run</h1>
-                  <p className="tool-desc">This run is being carried out on CAT&apos;s server. You can close this page and come back to it.</p>
-                </div>
-              </div>
-              <div className="tool-body usage-body">
-                <RunProgress token={linkedRunToken} />
-              </div>
-            </div>
-          )}
           {activeTool === "usage" && <UsageStatistics />}
           {activeTool === "acknowledgements" && <Acknowledgements />}
 
@@ -5472,6 +5635,94 @@ ${agreementSection}
       )}
 
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+
+      {pendingRun && (
+        <div className="modal-overlay open" role="dialog" aria-modal="true" aria-labelledby="run-estimate-title">
+          <div className="modal run-estimate-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 id="run-estimate-title">Start this coding run?</h2>
+            </div>
+            <div className="modal-body">
+              {estimateLoading && <p className="job-status"><span className="spinner" /> Working out what this run involves...</p>}
+
+              {!estimateLoading && estimateError && (
+                <p className="enc-error">Could not estimate this run ({estimateError}). You can still start it.</p>
+              )}
+
+              {!estimateLoading && estimate && (
+                <>
+                  <div className="run-estimate-figures">
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">{formatDuration(estimate.seconds)}</span>
+                      <span className="run-estimate-label">estimated time</span>
+                    </div>
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">{estimate.calls.toLocaleString("en-US")}</span>
+                      <span className="run-estimate-label">model calls</span>
+                    </div>
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">
+                        {((estimate.input_tokens + estimate.output_tokens) / 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}k
+                      </span>
+                      <span className="run-estimate-label">tokens</span>
+                    </div>
+                  </div>
+
+                  <p className="run-estimate-breakdown">
+                    {estimate.episodes.toLocaleString("en-US")} episode{estimate.episodes === 1 ? "" : "s"}
+                    {" × "}{estimate.models} model{estimate.models === 1 ? "" : "s"}
+                    {" × "}{estimate.runs_per_model} run{estimate.runs_per_model === 1 ? "" : "s"}
+                    {" = "}<strong>{estimate.calls.toLocaleString("en-US")}</strong> calls
+                    {" · "}{estimate.input_tokens.toLocaleString("en-US")} in
+                    {" / "}{estimate.output_tokens.toLocaleString("en-US")} out
+                  </p>
+
+                  <div className="run-estimate-cost">
+                    <label htmlFor="run-estimate-rate">Your rate per 1M tokens</label>
+                    <div className="run-estimate-cost-row">
+                      <input
+                        id="run-estimate-rate"
+                        className="run-estimate-rate"
+                        inputMode="decimal"
+                        placeholder="e.g. 0.60"
+                        value={tokenRate}
+                        onChange={(e) => {
+                          setTokenRate(e.target.value);
+                          try { localStorage.setItem("cat_token_rate", e.target.value); } catch {}
+                        }}
+                      />
+                      {Number(tokenRate) > 0 && (
+                        <span className="run-estimate-money">
+                          ≈ {((estimate.input_tokens + estimate.output_tokens) / 1_000_000 * Number(tokenRate))
+                            .toLocaleString("en-US", { maximumFractionDigits: 2 })} for this run
+                        </span>
+                      )}
+                    </div>
+                    <p className="run-estimate-rate-note">
+                      Providers change their prices, so CAT does not keep a price list. Enter the
+                      rate your provider charges and it is remembered in this browser.
+                    </p>
+                  </div>
+
+                  <p className="run-estimate-caveat">
+                    These are rough estimates. Token counts are approximate, and the time
+                    {estimate.timing_from_history
+                      ? " comes from how long previous runs on this server actually took."
+                      : " uses a default, as this server has no completed runs to measure yet."}
+                    {" "}Retries and provider rate limits can make a run take longer.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setPendingRun(null)}>Cancel</button>
+              <button className="btn btn-run" disabled={estimateLoading} onClick={confirmPendingRun}>
+                {pendingRun === "server" ? "Run on the server" : "Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {analyticsConsent === "undecided" && (
         <div className="privacy-consent" role="dialog" aria-modal="true" aria-labelledby="privacy-consent-title">

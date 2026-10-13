@@ -13,6 +13,18 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.6",
+        "date": "2026-10-13",
+        "title": "See what a run will take before starting it",
+        "notes": "Run Coding now shows an estimate first — how long the run should take, how many model calls it will make, and roughly how many tokens it will use — with Run and Cancel. Enter the rate your provider charges and it shows an approximate cost. The timing is measured from this server's own completed runs once there are some.",
+    },
+    {
+        "version": "1.4.5",
+        "date": "2026-10-07",
+        "title": "A run link shows the full results view",
+        "notes": "Opening a server-side run's link now shows the same results view as the app — live results, validation, coder agreement, downloads and the run summary — instead of progress and a download button. The browser run also shows an estimate of the time remaining, which only the server-side run had.",
+    },
+    {
         "version": "1.4.4",
         "date": "2026-10-05",
         "title": "Repeated runs sweep the whole dataset each time",
