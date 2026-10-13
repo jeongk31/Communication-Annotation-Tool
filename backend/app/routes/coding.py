@@ -26,6 +26,7 @@ from app.models.database import get_db
 from app.ratelimit import limiter
 from app.streaming import with_keepalive
 from app.usage import RunTracker, track_package_download
+from app import estimate as estimate_mod
 from app import jobs
 from app.services.script_generator import generate_coding_script
 from app.services.coding_runner import (
@@ -35,6 +36,8 @@ from app.services.coding_runner import (
     expanded_codebook_specs,
     run_coding,
 )
+# The estimate must measure the prompt the run will actually send, not a copy of it.
+from app.services.coding_runner import _build_prompt as build_coding_prompt
 from app.services.result_exporter import (
     build_result_frames,
     dataframe_to_csv,
@@ -1030,6 +1033,91 @@ async def run_coding_stream(request: Request, config: dict):
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+class EstimateRequest(BaseModel):
+    """The same configuration a run is started with."""
+    config: dict
+
+
+@router.post("/coding/estimate")
+@limiter.limit("60/minute")
+async def estimate_run(request: Request, req: EstimateRequest, db: AsyncSession = Depends(get_db)):
+    """How long a run will take and roughly how many tokens it will use.
+
+    Makes no model call: the prompt is built exactly as the run will build it,
+    from the first real episode, so the figures reflect this researcher's own
+    instructions, codebook and data.
+    """
+    config = req.config or {}
+    try:
+        file_info = resolve_uploaded_file(config.get("file_id"))
+    except UploadResolutionError as exc:
+        return _upload_error_response(exc)
+
+    file_path = file_info["path"]
+    try:
+        if file_path.rsplit(".", 1)[-1].lower() == "csv":
+            df = pd.read_csv(file_path)
+        else:
+            df = pd.read_excel(file_path)
+    except Exception:
+        raise HTTPException(400, "Could not read the uploaded dataset.")
+
+    source_rows = config.get("source_rows")
+    if source_rows is not None:
+        try:
+            df = _select_source_rows(df, source_rows)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    message_column = config.get("message_column", "")
+    if message_column not in df.columns:
+        raise HTTPException(400, f"Column '{message_column}' not found in file.")
+
+    context = config.get("context", []) or []
+    try:
+        grouped = _group_units(
+            df,
+            message_column=message_column,
+            identifier_columns=config.get("identifier_columns") or [],
+            identity_column=config.get("identity_column"),
+            order_column=config.get("order_column"),
+            order_direction=config.get("order_direction", "asc"),
+            context_columns=[item.get("column") for item in context if item.get("column")],
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    codebook = config.get("codebook", []) or []
+    participants = config.get("participants", []) or []
+    model_slots = config.get("model_slots", []) or []
+
+    # The prompt the run would send for the first episode, built by the same code.
+    first_message = ""
+    if len(grouped) > 0 and message_column in grouped.columns:
+        value = grouped.iloc[0][message_column]
+        first_message = "" if pd.isna(value) else str(value)
+    prompt = build_coding_prompt(
+        first_message,
+        config.get("experiment_instructions", ""),
+        config.get("coding_instructions", ""),
+        codebook,
+        participants,
+        "",
+    )
+
+    models = [str(slot.get("model", "")) for slot in model_slots if isinstance(slot, dict)]
+    seconds_each, measured = await estimate_mod.seconds_per_call(db, models)
+    return estimate_mod.build_estimate(
+        episodes=len(grouped),
+        models=max(1, len(model_slots)),
+        runs_per_model=int(config.get("runs_per_model") or 1),
+        prompt=prompt,
+        variable_count=len([e for e in codebook if str(e.get("label", "")).strip()]),
+        seconds_each=seconds_each,
+        measured=measured,
     )
 
 

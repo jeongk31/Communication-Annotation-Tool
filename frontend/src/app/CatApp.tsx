@@ -642,6 +642,19 @@ function exportConfigFromServer(config: ServerRunConfig, episodeCount: number): 
   };
 }
 
+/** What a run will cost in time and tokens, shown before it starts. */
+interface RunEstimate {
+  episodes: number;
+  models: number;
+  runs_per_model: number;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  tokens_per_call: number;
+  seconds: number;
+  timing_from_history: boolean;
+}
+
 interface RunProgress {
   current: number;
   total: number;
@@ -1378,6 +1391,15 @@ export default function CatApp() {
   const [serverRunKey, setServerRunKey] = useState("");
   const [serverRunError, setServerRunError] = useState("");
   const [startingServerRun, setStartingServerRun] = useState(false);
+  // A run is a long, paid operation, so it is confirmed against an estimate
+  // rather than started straight from the button.
+  const [pendingRun, setPendingRun] = useState<null | "browser" | "server">(null);
+  const [estimate, setEstimate] = useState<RunEstimate | null>(null);
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [estimateError, setEstimateError] = useState("");
+  // Providers publish prices that change; rather than ship a table that goes
+  // stale and misstate someone's costs, they supply their own rate once.
+  const [tokenRate, setTokenRate] = useState("");
   // Whether this deployment can actually send mail. Until the relay exists the
   // run still works and the link still works, so the option stays — it just does
   // not ask for an address it would never use.
@@ -1491,6 +1513,7 @@ export default function CatApp() {
   useEffect(() => {
     try {
       setRememberedRun(localStorage.getItem("cat_last_server_run") || "");
+      setTokenRate(localStorage.getItem("cat_token_rate") || "");
     } catch { /* private window */ }
   }, []);
 
@@ -2852,6 +2875,85 @@ export default function CatApp() {
       )}
     </>
   ) : null;
+
+  /** The run configuration, shared by the estimate and by starting a run. */
+  const buildRunConfig = (fileId: string) => ({
+    file_id: fileId,
+    file_name: uploadResult?.file_name ?? "",
+    message_column: messageColumn,
+    identifier_columns: identifierColumns,
+    identity_column: identityColumn || null,
+    order_column: orderColumn || null,
+    order_direction: orderDirection,
+    experiment_instructions: experimentInstructions,
+    coding_instructions: "",
+    empty_message_handling: emptyMessageHandling,
+    codebook,
+    participants,
+    context: contextColumns.map((c) => ({ column: c, description: contextDescriptions[c] || "" })),
+    model_slots: modelSlots.map(buildSlotPayload),
+    runs_per_model: runsPerModel,
+    source_rows: selectedSourceIndices,
+    row_indices: null,
+  });
+
+  // Ask what the run will take before committing to it. A run is a long,
+  // irreversible spend against the researcher's own API key, and until now the
+  // only way to find out its size was to start it.
+  const openRunConfirmation = async (kind: "browser" | "server") => {
+    const issues = showSetupValidation("run");
+    if (issues.length > 0) return;
+    if (!uploadResult || resultDownloadKind) return;
+    if (kind === "server") {
+      const address = resultEmail.trim();
+      if (emailNotifications && !address) {
+        setServerRunError("Enter the email address we should send the link to.");
+        setOpenPanels((prev) => new Set(prev).add(4));
+        return;
+      }
+      if (address && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+        setServerRunError("That does not look like a valid email address.");
+        setOpenPanels((prev) => new Set(prev).add(4));
+        return;
+      }
+      setServerRunError("");
+    }
+    setSetupIssues([]);
+    setPendingRun(kind);
+    setEstimate(null);
+    setEstimateError("");
+    setEstimateLoading(true);
+    try {
+      const init = await gzipJsonInit({ config: buildRunConfig(uploadResult.file_id) });
+      const response = await fetch("/api/coding/estimate", {
+        method: "POST",
+        headers: init.headers,
+        body: init.body,
+      });
+      const raw = await response.text();
+      const firewall = firewallErrorFromText(raw);
+      if (firewall) throw firewall;
+      if (!response.ok) {
+        let detail = response.statusText;
+        try { detail = (JSON.parse(raw) as { detail?: string }).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      setEstimate(JSON.parse(raw) as RunEstimate);
+    } catch (e: unknown) {
+      // The estimate failing must not block the run; the dialog says so and
+      // still offers to start.
+      setEstimateError(e instanceof Error ? e.message : "Could not estimate this run.");
+    } finally {
+      setEstimateLoading(false);
+    }
+  };
+
+  const confirmPendingRun = () => {
+    const kind = pendingRun;
+    setPendingRun(null);
+    if (kind === "server") void handleRunOnServer();
+    else if (kind === "browser") void handleRun();
+  };
 
   const handleRunOnServer = async () => {
     const issues = showSetupValidation("run");
@@ -4827,7 +4929,7 @@ ${agreementSection}
                 <button
                   className="btn btn-run"
                   disabled={generating || resultDownloadKind !== null || startingServerRun}
-                  onClick={runOnServer ? handleRunOnServer : handleRun}
+                  onClick={() => openRunConfirmation(runOnServer ? "server" : "browser")}
                 >
                   {startingServerRun ? <><span className="spinner" /> Starting</> : "Run Coding"}
                   {modelSlots.length * runsPerModel > 1 && (
@@ -5533,6 +5635,94 @@ ${agreementSection}
       )}
 
       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+
+      {pendingRun && (
+        <div className="modal-overlay open" role="dialog" aria-modal="true" aria-labelledby="run-estimate-title">
+          <div className="modal run-estimate-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 id="run-estimate-title">Start this coding run?</h2>
+            </div>
+            <div className="modal-body">
+              {estimateLoading && <p className="job-status"><span className="spinner" /> Working out what this run involves...</p>}
+
+              {!estimateLoading && estimateError && (
+                <p className="enc-error">Could not estimate this run ({estimateError}). You can still start it.</p>
+              )}
+
+              {!estimateLoading && estimate && (
+                <>
+                  <div className="run-estimate-figures">
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">{formatDuration(estimate.seconds)}</span>
+                      <span className="run-estimate-label">estimated time</span>
+                    </div>
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">{estimate.calls.toLocaleString("en-US")}</span>
+                      <span className="run-estimate-label">model calls</span>
+                    </div>
+                    <div className="run-estimate-figure">
+                      <span className="run-estimate-value">
+                        {((estimate.input_tokens + estimate.output_tokens) / 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}k
+                      </span>
+                      <span className="run-estimate-label">tokens</span>
+                    </div>
+                  </div>
+
+                  <p className="run-estimate-breakdown">
+                    {estimate.episodes.toLocaleString("en-US")} episode{estimate.episodes === 1 ? "" : "s"}
+                    {" × "}{estimate.models} model{estimate.models === 1 ? "" : "s"}
+                    {" × "}{estimate.runs_per_model} run{estimate.runs_per_model === 1 ? "" : "s"}
+                    {" = "}<strong>{estimate.calls.toLocaleString("en-US")}</strong> calls
+                    {" · "}{estimate.input_tokens.toLocaleString("en-US")} in
+                    {" / "}{estimate.output_tokens.toLocaleString("en-US")} out
+                  </p>
+
+                  <div className="run-estimate-cost">
+                    <label htmlFor="run-estimate-rate">Your rate per 1M tokens</label>
+                    <div className="run-estimate-cost-row">
+                      <input
+                        id="run-estimate-rate"
+                        className="run-estimate-rate"
+                        inputMode="decimal"
+                        placeholder="e.g. 0.60"
+                        value={tokenRate}
+                        onChange={(e) => {
+                          setTokenRate(e.target.value);
+                          try { localStorage.setItem("cat_token_rate", e.target.value); } catch {}
+                        }}
+                      />
+                      {Number(tokenRate) > 0 && (
+                        <span className="run-estimate-money">
+                          ≈ {((estimate.input_tokens + estimate.output_tokens) / 1_000_000 * Number(tokenRate))
+                            .toLocaleString("en-US", { maximumFractionDigits: 2 })} for this run
+                        </span>
+                      )}
+                    </div>
+                    <p className="run-estimate-rate-note">
+                      Providers change their prices, so CAT does not keep a price list. Enter the
+                      rate your provider charges and it is remembered in this browser.
+                    </p>
+                  </div>
+
+                  <p className="run-estimate-caveat">
+                    These are rough estimates. Token counts are approximate, and the time
+                    {estimate.timing_from_history
+                      ? " comes from how long previous runs on this server actually took."
+                      : " uses a default, as this server has no completed runs to measure yet."}
+                    {" "}Retries and provider rate limits can make a run take longer.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setPendingRun(null)}>Cancel</button>
+              <button className="btn btn-run" disabled={estimateLoading} onClick={confirmPendingRun}>
+                {pendingRun === "server" ? "Run on the server" : "Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {analyticsConsent === "undecided" && (
         <div className="privacy-consent" role="dialog" aria-modal="true" aria-labelledby="privacy-consent-title">
