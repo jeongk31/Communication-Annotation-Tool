@@ -8,7 +8,7 @@ from app.main import app
 
 class VersionTests(unittest.TestCase):
     def test_api_and_health_endpoint_report_release_version(self):
-        self.assertEqual(__version__, "1.4.6")
+        self.assertEqual(__version__, "1.4.7")
         self.assertEqual(app.version, __version__)
 
         client = TestClient(app)

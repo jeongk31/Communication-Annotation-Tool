@@ -642,7 +642,7 @@ function exportConfigFromServer(config: ServerRunConfig, episodeCount: number): 
   };
 }
 
-/** What a run will cost in time and tokens, shown before it starts. */
+/** What a run will cost in time, tokens and money, shown before it starts. */
 interface RunEstimate {
   episodes: number;
   models: number;
@@ -653,6 +653,28 @@ interface RunEstimate {
   tokens_per_call: number;
   seconds: number;
   timing_from_history: boolean;
+  /** null when no selected model has a published rate on file. */
+  cost_usd: number | null;
+  cost_by_model: { model: string; cost_usd: number }[];
+  /** Models left out of the total because CAT has no rate for them. */
+  unpriced_models: string[];
+  /** ISO date the rates were last checked, shown beside the figure. */
+  prices_updated: string;
+}
+
+/** "2026-10-13" as "13 October 2026"; the raw string if it is not a date. */
+function formatPriceDate(iso: string): string {
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString("en-GB", {
+    day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+  });
+}
+
+/** Dollars at a readable precision: fractions of a cent round up, not away. */
+function formatUsd(amount: number): string {
+  if (amount > 0 && amount < 0.01) return "<$0.01";
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 interface RunProgress {
@@ -1397,9 +1419,6 @@ export default function CatApp() {
   const [estimate, setEstimate] = useState<RunEstimate | null>(null);
   const [estimateLoading, setEstimateLoading] = useState(false);
   const [estimateError, setEstimateError] = useState("");
-  // Providers publish prices that change; rather than ship a table that goes
-  // stale and misstate someone's costs, they supply their own rate once.
-  const [tokenRate, setTokenRate] = useState("");
   // Whether this deployment can actually send mail. Until the relay exists the
   // run still works and the link still works, so the option stays — it just does
   // not ask for an address it would never use.
@@ -1513,7 +1532,6 @@ export default function CatApp() {
   useEffect(() => {
     try {
       setRememberedRun(localStorage.getItem("cat_last_server_run") || "");
-      setTokenRate(localStorage.getItem("cat_token_rate") || "");
     } catch { /* private window */ }
   }, []);
 
@@ -5642,7 +5660,7 @@ ${agreementSection}
             <div className="modal-header">
               <h2 id="run-estimate-title">Start this coding run?</h2>
             </div>
-            <div className="modal-body">
+            <div className="modal-body run-estimate-body">
               {estimateLoading && <p className="job-status"><span className="spinner" /> Working out what this run involves...</p>}
 
               {!estimateLoading && estimateError && (
@@ -5657,14 +5675,14 @@ ${agreementSection}
                       <span className="run-estimate-label">estimated time</span>
                     </div>
                     <div className="run-estimate-figure">
-                      <span className="run-estimate-value">{estimate.calls.toLocaleString("en-US")}</span>
-                      <span className="run-estimate-label">model calls</span>
+                      <span className="run-estimate-value">
+                        {estimate.cost_usd === null ? "—" : formatUsd(estimate.cost_usd)}
+                      </span>
+                      <span className="run-estimate-label">estimated cost</span>
                     </div>
                     <div className="run-estimate-figure">
-                      <span className="run-estimate-value">
-                        {((estimate.input_tokens + estimate.output_tokens) / 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}k
-                      </span>
-                      <span className="run-estimate-label">tokens</span>
+                      <span className="run-estimate-value">{estimate.calls.toLocaleString("en-US")}</span>
+                      <span className="run-estimate-label">model calls</span>
                     </div>
                   </div>
 
@@ -5673,36 +5691,29 @@ ${agreementSection}
                     {" × "}{estimate.models} model{estimate.models === 1 ? "" : "s"}
                     {" × "}{estimate.runs_per_model} run{estimate.runs_per_model === 1 ? "" : "s"}
                     {" = "}<strong>{estimate.calls.toLocaleString("en-US")}</strong> calls
-                    {" · "}{estimate.input_tokens.toLocaleString("en-US")} in
+                    {" · "}{estimate.input_tokens.toLocaleString("en-US")} tokens in
                     {" / "}{estimate.output_tokens.toLocaleString("en-US")} out
                   </p>
 
-                  <div className="run-estimate-cost">
-                    <label htmlFor="run-estimate-rate">Your rate per 1M tokens</label>
-                    <div className="run-estimate-cost-row">
-                      <input
-                        id="run-estimate-rate"
-                        className="run-estimate-rate"
-                        inputMode="decimal"
-                        placeholder="e.g. 0.60"
-                        value={tokenRate}
-                        onChange={(e) => {
-                          setTokenRate(e.target.value);
-                          try { localStorage.setItem("cat_token_rate", e.target.value); } catch {}
-                        }}
-                      />
-                      {Number(tokenRate) > 0 && (
-                        <span className="run-estimate-money">
-                          ≈ {((estimate.input_tokens + estimate.output_tokens) / 1_000_000 * Number(tokenRate))
-                            .toLocaleString("en-US", { maximumFractionDigits: 2 })} for this run
-                        </span>
-                      )}
-                    </div>
-                    <p className="run-estimate-rate-note">
-                      Providers change their prices, so CAT does not keep a price list. Enter the
-                      rate your provider charges and it is remembered in this browser.
-                    </p>
-                  </div>
+                  {estimate.cost_by_model.length > 1 && (
+                    <ul className="run-estimate-models">
+                      {estimate.cost_by_model.map((row) => (
+                        <li key={row.model}>
+                          <span className="run-estimate-model-name">{row.model}</span>
+                          <span className="run-estimate-model-cost">{formatUsd(row.cost_usd)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <p className="run-estimate-rate-note">
+                    {estimate.cost_usd === null
+                      ? "CAT has no published rate on file for the model you selected, so it cannot estimate the cost."
+                      : `Priced at published list rates as of ${formatPriceDate(estimate.prices_updated)}. Check your provider's current pricing.`}
+                    {estimate.unpriced_models.length > 0 && estimate.cost_usd !== null && (
+                      <> The total excludes {estimate.unpriced_models.join(", ")}, which CAT has no rate for.</>
+                    )}
+                  </p>
 
                   <p className="run-estimate-caveat">
                     These are rough estimates. Token counts are approximate, and the time
@@ -5714,7 +5725,7 @@ ${agreementSection}
                 </>
               )}
             </div>
-            <div className="modal-actions">
+            <div className="modal-actions run-estimate-actions">
               <button className="btn btn-ghost" onClick={() => setPendingRun(null)}>Cancel</button>
               <button className="btn btn-run" disabled={estimateLoading} onClick={confirmPendingRun}>
                 {pendingRun === "server" ? "Run on the server" : "Run"}

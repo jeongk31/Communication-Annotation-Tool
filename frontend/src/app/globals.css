@@ -1207,6 +1207,13 @@ input[type="range"]::-webkit-slider-thumb{
   padding:12px 20px;border-top:1px solid var(--border);
   flex-shrink:0;
 }
+/* A row of buttons closing a dialog: right-aligned, with the same divider and
+   padding as .modal-footer. Without this the buttons sit flush in the corner. */
+.modal-actions{
+  display:flex;align-items:center;justify-content:flex-end;gap:8px;
+  padding:12px 20px;border-top:1px solid var(--border);
+  flex-shrink:0;
+}
 
 /* Model pool (left side) */
 .model-pool-h{font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
@@ -2842,32 +2849,37 @@ textarea.ta-fit{
 /* RUN ESTIMATE CONFIRMATION                           */
 /* ═══════════════════════════════════════════════════ */
 .run-estimate-modal{width:min(520px,calc(100vw - 32px))}
+/* .modal-body is a two-column grid for the model picker; this dialog is a
+   single stacked column, so it has to opt out of that. */
+.run-estimate-body{
+  display:flex;flex-direction:column;gap:14px;padding:18px 20px;
+}
 .run-estimate-figures{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:10px;
 }
 .run-estimate-figure{
-  padding:12px;border:1px solid var(--border-lt);border-radius:8px;
-  background:var(--bg);text-align:center;
+  padding:12px 10px;border:1px solid var(--border-lt);border-radius:8px;
+  background:var(--bg);text-align:center;min-width:0;
 }
 .run-estimate-value{
   display:block;font-size:19px;font-weight:700;color:var(--text);letter-spacing:-0.02em;
 }
-.run-estimate-label{display:block;margin-top:2px;font-size:10.5px;color:var(--text-3)}
+.run-estimate-label{display:block;margin-top:3px;font-size:10.5px;color:var(--text-3)}
 .run-estimate-breakdown{
-  margin:0 0 14px;font-size:11.5px;color:var(--text-2);line-height:1.5;
+  margin:0;font-size:11.5px;color:var(--text-2);line-height:1.5;
 }
-.run-estimate-cost{
-  padding:11px 13px;border:1px solid var(--border-lt);border-radius:8px;background:var(--bg);
+/* Per-model costs, shown only when a run mixes models at different rates. */
+.run-estimate-models{
+  margin:0;padding:9px 12px;list-style:none;
+  border:1px solid var(--border-lt);border-radius:8px;background:var(--bg);
 }
-.run-estimate-cost label{display:block;font-size:11.5px;font-weight:600;color:var(--text)}
-.run-estimate-cost-row{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
-.run-estimate-rate{
-  width:120px;padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius);
-  font-family:var(--sans);font-size:12px;background:var(--surface);color:var(--text);
+.run-estimate-models li{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  padding:3px 0;font-size:11.5px;
 }
-.run-estimate-rate:focus{outline:none;border-color:var(--purple);box-shadow:0 0 0 3px rgba(91,58,142,.14)}
-.run-estimate-money{font-size:12.5px;font-weight:650;color:var(--purple)}
-.run-estimate-rate-note{margin:7px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.45}
+.run-estimate-model-name{color:var(--text-2);font-family:var(--mono);word-break:break-all}
+.run-estimate-model-cost{font-weight:650;color:var(--text);white-space:nowrap}
+.run-estimate-rate-note,
 .run-estimate-caveat{
-  margin:12px 0 0;font-size:10.5px;color:var(--text-3);line-height:1.5;
+  margin:0;font-size:10.5px;color:var(--text-3);line-height:1.5;
 }

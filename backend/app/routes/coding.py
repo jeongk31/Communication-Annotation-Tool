@@ -1112,7 +1112,7 @@ async def estimate_run(request: Request, req: EstimateRequest, db: AsyncSession 
     seconds_each, measured = await estimate_mod.seconds_per_call(db, models)
     return estimate_mod.build_estimate(
         episodes=len(grouped),
-        models=max(1, len(model_slots)),
+        models=models,
         runs_per_model=int(config.get("runs_per_model") or 1),
         prompt=prompt,
         variable_count=len([e for e in codebook if str(e.get("label", "")).strip()]),
