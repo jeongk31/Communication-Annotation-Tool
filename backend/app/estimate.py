@@ -1,4 +1,4 @@
-"""What a coding run will cost in time and tokens, before it is started.
+"""What a coding run will cost in time, tokens and money, before it is started.
 
 A run is a sequence of paid calls that can take an hour, and until now the only
 way to find out how long it would take or how much it would consume was to run
@@ -17,6 +17,8 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+
+from app import prices
 
 logger = logging.getLogger(__name__)
 
@@ -90,20 +92,37 @@ def estimate_tokens(prompt: str, variable_count: int) -> tuple[int, int]:
 def build_estimate(
     *,
     episodes: int,
-    models: int,
+    models: list[str],
     runs_per_model: int,
     prompt: str,
     variable_count: int,
     seconds_each: float,
     measured: bool,
 ) -> dict[str, Any]:
-    """Assemble the figures the confirmation dialog shows."""
+    """Assemble the figures the confirmation dialog shows.
+
+    Cost is priced per model, because the models in one run can differ in price
+    by a factor of a hundred. A model with no published rate on file is left out
+    of the total and named instead, so the figure is never quietly short.
+    """
     runs = max(1, runs_per_model)
-    calls = max(0, episodes) * max(1, models) * runs
+    slots = [m for m in models] or [""]
+    calls_per_model = max(0, episodes) * runs
+    calls = calls_per_model * len(slots)
     per_input, per_output = estimate_tokens(prompt, variable_count)
+
+    priced: list[dict[str, Any]] = []
+    unpriced: list[str] = []
+    for model in slots:
+        cost = prices.cost_for(model, per_input * calls_per_model, per_output * calls_per_model)
+        if cost is None:
+            unpriced.append(model)
+        else:
+            priced.append({"model": model, "cost_usd": round(cost, 4)})
+
     return {
         "episodes": episodes,
-        "models": models,
+        "models": len(slots),
         "runs_per_model": runs,
         # Episodes times models times runs: every paid call the run will make.
         "calls": calls,
@@ -114,4 +133,11 @@ def build_estimate(
         # False means the timing is a default rather than this deployment's own
         # history, which the dialog should say plainly.
         "timing_from_history": measured,
+        # None rather than 0 when nothing could be priced: the dialog must not
+        # show "$0.00" for a run that will certainly be billed.
+        "cost_usd": round(sum(p["cost_usd"] for p in priced), 4) if priced else None,
+        "cost_by_model": priced,
+        # Named so the dialog can say whose share is missing from the total.
+        "unpriced_models": [m for m in unpriced if m],
+        "prices_updated": prices.PRICES_UPDATED,
     }

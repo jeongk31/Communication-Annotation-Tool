@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.7",
+        "date": "2026-10-13",
+        "title": "The run estimate prices itself",
+        "notes": "The estimate shown before a run now works out an approximate cost from the published list rates for the models selected, so there is no rate to type in. It names the date those rates were checked, breaks the cost down per model when a run mixes them, and says plainly when a model has no rate on file rather than quoting it as free. The dialog itself is laid out properly, with Cancel and Run in the footer.",
+    },
+    {
         "version": "1.4.6",
         "date": "2026-10-13",
         "title": "See what a run will take before starting it",
