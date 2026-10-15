@@ -1,11 +1,11 @@
 # Direct runtime dependencies. Update deliberately, then regenerate requirements.txt
 # with: pip-compile --generate-hashes --strip-extras --output-file=backend/requirements.txt backend/requirements.in
-fastapi==0.141.1
-starlette==1.6.0
-uvicorn[standard]==0.52.3
-sqlalchemy[asyncio]==2.0.52
-asyncpg==0.31.0
-pydantic==2.13.4
+fastapi==0.143.0
+starlette==1.7.0
+uvicorn[standard]==0.54.0
+sqlalchemy[asyncio]==2.1.4
+asyncpg==0.32.0
+pydantic==2.14.1
 pydantic-settings==2.15.0
 python-multipart==0.0.32
 slowapi==0.1.10
@@ -16,4 +16,4 @@ anthropic==0.125.0
 google-genai==1.75.0
 httpx==0.28.1
 # Starlette's TestClient uses the successor client and otherwise emits a deprecation warning.
-httpx2==2.12.0
+httpx2==2.13.1
