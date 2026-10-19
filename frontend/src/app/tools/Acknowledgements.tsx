@@ -31,6 +31,14 @@ const CONTRIBUTORS: Contributor[] = [
       "University of Zurich",
     ],
   },
+  {
+    name: "Tanya Rosenblat",
+    role: "Professor of Information and Professor of Economics",
+    affiliation: [
+      "School of Information and Department of Economics",
+      "University of Michigan",
+    ],
+  },
 ];
 
 export default function Acknowledgements() {
