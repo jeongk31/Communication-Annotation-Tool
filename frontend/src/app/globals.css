@@ -2691,7 +2691,7 @@ textarea.ta-fit{
   display:grid;gap:10px;margin-bottom:18px;
   grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
 }
-.usage-cards-4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.usage-cards-2{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .usage-map{
   height:clamp(340px,62vh,680px);width:100%;
   border:1px solid var(--border-lt);border-radius:8px;

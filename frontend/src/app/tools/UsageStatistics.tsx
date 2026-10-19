@@ -131,8 +131,6 @@ export default function UsageStatistics() {
   const cards = summary
     ? [
         { value: summary.visits, label: "Visits", hint: "recorded page visits" },
-        { value: summary.runs, label: "Coding runs", hint: "started in the browser" },
-        { value: summary.episodes_coded, label: "Episodes coded", hint: "across completed runs" },
         { value: summary.countries, label: "Countries", hint: "approximate, from visits" },
       ]
     : [];
@@ -156,7 +154,7 @@ export default function UsageStatistics() {
 
         {summary && (
           <>
-            <div className="usage-cards usage-cards-4">
+            <div className="usage-cards usage-cards-2">
               {cards.map((card) => (
                 <div className="usage-card" key={card.label}>
                   <div className="usage-card-v">{formatCount(card.value)}</div>

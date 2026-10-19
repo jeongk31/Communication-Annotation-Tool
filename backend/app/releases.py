@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.9",
+        "date": "2026-10-19",
+        "title": "Simpler public usage figures",
+        "notes": "The public Usage Statistics page now shows just total visits and the number of countries, above the map. The coding-run and episode counts remain on the admin dashboard.",
+    },
+    {
         "version": "1.4.8",
         "date": "2026-10-19",
         "title": "Tanya Rosenblat added to the acknowledgements",
