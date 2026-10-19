@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.8",
+        "date": "2026-10-19",
+        "title": "Tanya Rosenblat added to the acknowledgements",
+        "notes": "The Acknowledgements page now thanks Tanya Rosenblat (School of Information and Department of Economics, University of Michigan) for her feedback on CAT.",
+    },
+    {
         "version": "1.4.7",
         "date": "2026-10-13",
         "title": "The run estimate prices itself",
