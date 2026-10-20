@@ -33,7 +33,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, update
 
 from app.config import settings
-from app.usage import scrub_secrets
+from app.usage import RunTracker, scrub_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -241,14 +241,20 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
     started = datetime.utcnow()
     clock = time.monotonic()
     last_write = 0.0
+    # A run finished on the server is recorded for the usage dashboard exactly like
+    # one streamed to the browser; without this, these runs were never counted.
+    tracker = RunTracker(config)
 
     try:
         async with _semaphore():
             await _save(job_id, status="running", started_at=started)
+            tracker.start()
             async for update_event in _coding_updates(config, file_info):
                 if token in _stop_flags:
                     status = "stopped"
+                    tracker.stopped = True
                     break
+                tracker.observe(update_event)
                 kind = update_event.get("type")
                 if kind == "progress":
                     current = int(update_event.get("current") or 0)
@@ -308,9 +314,13 @@ async def _run(job_id: str, token: str, config: dict, file_info: dict, email: st
         raise
     except Exception as exc:
         message = scrub_secrets(str(exc))[:500]
+        tracker.note_error(message)
         logger.warning("job %s failed", job_id, exc_info=True)
     finally:
         _stop_flags.discard(token)
+        if tracker.started:
+            # Only schedules the write, so it is safe while being cancelled.
+            tracker.finish()
 
     if status == "stopped" and not message:
         message = "The run was stopped."

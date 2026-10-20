@@ -120,6 +120,10 @@ class RunTracker:
         self.error_count = 0
         self.error_samples: list[str] = []
 
+    @property
+    def started(self) -> bool:
+        return bool(self._started_at)
+
     def start(self) -> None:
         self._started_at = time.monotonic()
         _spawn(_write(
@@ -137,7 +141,9 @@ class RunTracker:
             self.note_error(update.get("message", ""))
         elif kind == "complete":
             self.completed = True
-            self.episodes_coded = _int(update.get("coded_rows"))
+            # Usage counts every coding — an episode coded by two models over three
+            # runs is six — not the distinct episodes in the dataset.
+            self.episodes_coded = _int(update.get("codings", update.get("coded_rows")))
             self.total_episodes = _int(update.get("total_rows"))
 
     def note_error(self, message) -> None:

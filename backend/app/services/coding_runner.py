@@ -367,6 +367,10 @@ async def run_coding(
     total_calls = len(providers) * runs_per_model
     use_voting = total_calls > 1
     coded_count = 0
+    # Every successful model answer: episodes x models x passes. coded_count is the
+    # number of distinct episodes that ended up with a result, which stays at 3 for
+    # three episodes however many models and repeats coded them.
+    codings = 0
     all_results = []
 
     # Repeated runs go round-robin: every episode once, then every episode again,
@@ -455,6 +459,7 @@ async def run_coding(
                                    "message": f"Row {row_idx + 1} [{coder_label}]: {e}"}
 
                 if parsed:
+                    codings += 1
                     calls_by_episode[row_idx].append(parsed)
                     all_results.append({**detail_original, "coder": coder_label, **parsed})
                 else:
@@ -504,5 +509,6 @@ async def run_coding(
         "type": "complete",
         "total_rows": total,
         "coded_rows": coded_count,
+        "codings": codings,
         "file_path": output_path,
     }
