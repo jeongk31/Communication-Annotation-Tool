@@ -90,6 +90,18 @@ class RunTrackerTests(unittest.TestCase):
         self.assertEqual(written[1]["num_episodes"], 10)
         self.assertEqual(written[0]["run_id"], written[1]["run_id"])
 
+    def test_counts_every_coding_rather_than_distinct_episodes(self):
+        tracker = RunTracker({})
+
+        async def drive():
+            tracker.start()
+            tracker.observe({"type": "complete", "total_rows": 3, "coded_rows": 3, "codings": 18})
+            tracker.finish()
+
+        written = self._run(drive)
+        self.assertEqual(written[1]["episodes_coded"], 18)
+        self.assertEqual(written[1]["num_episodes"], 3)
+
     def test_run_without_a_complete_event_is_failed_and_keeps_errors(self):
         tracker = RunTracker({})
 

@@ -47,7 +47,8 @@ obvious from the code alone. Applies to any AI assistant or human contributor.
 ## Usage counting (admin dashboard)
 
 - Coding runs and package downloads are counted **on the server** (`backend/app/usage.py`,
-  wired into `/coding/run-stream` and `/coding/generate-package`). The browser also reports
+  wired into `/coding/run-stream`, server-side runs in `app/jobs.py`, and
+  `/coding/generate-package`). The browser also reports
   runs, but that path is consent-gated and dies with the tab, so it undercounts badly — it
   is an enrichment (location), never the count.
 - Both reports of one run share a `run_id` (the browser sends `client_run_id` when analytics

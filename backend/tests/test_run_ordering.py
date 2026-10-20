@@ -115,3 +115,13 @@ class RunOrderingTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    async def test_usage_counts_every_model_and_run(self):
+        _, updates = await self._collect(episodes=3, runs=3, models=2)
+        complete = updates[-1]
+        self.assertEqual(complete["coded_rows"], 3)
+        self.assertEqual(complete["codings"], 18)
+
+    async def test_usage_counts_repeated_runs_of_one_model(self):
+        _, updates = await self._collect(episodes=3, runs=5)
+        self.assertEqual(updates[-1]["codings"], 15)

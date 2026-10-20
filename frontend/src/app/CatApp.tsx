@@ -695,6 +695,8 @@ interface CodingStreamMessage {
   message?: string;
   total_rows?: number;
   coded_rows?: number;
+  /** Successful model answers: episodes x models x runs. */
+  codings?: number;
   file_path?: string;
 }
 
@@ -3260,7 +3262,7 @@ export default function CatApp() {
                   file_path: msg.file_path!,
                 });
                 outcomeCompleted = true;
-                outcomeCoded = msg.coded_rows ?? outcomeCoded;
+                outcomeCoded = msg.codings ?? msg.coded_rows ?? outcomeCoded;
                 log("info", `Coding complete. ${msg.total_rows} episodes processed, ${msg.coded_rows} coded.`);
               }
             },

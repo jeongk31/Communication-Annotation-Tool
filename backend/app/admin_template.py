@@ -327,7 +327,7 @@ function renderHomeCards(){
     {v:S.runs, l:'Runs in the interface', hint:'Run Coding launches, incl. re-runs'},
     {v:S.runs_completed, l:'Completed', accent:true, hint:(S.success_rate||0)+'% success'},
     {v:S.package_downloads||0, l:'Packages downloaded', hint:'coded offline with the script'},
-    {v:S.total_episodes_coded||0, l:'Episodes coded', hint:'all completed runs'},
+    {v:S.total_episodes_coded||0, l:'Episodes coded', hint:'episodes × models × runs'},
     {v:counts.unresolved||0, l:'Open messages'},
   ];
   const hc = document.getElementById('home-cards'); hc.innerHTML = '';

@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.10",
+        "date": "2026-10-20",
+        "title": "Usage counts every coding, and server-side runs are counted",
+        "notes": "Episodes coded on the admin dashboard now counts every coding a run produces — episodes times models times repeated runs — so 3 episodes coded by 2 models over 3 runs records 18, not 3. Runs left to finish on the server were not recorded on the dashboard at all; they now are, with the same outcome and counts as a run in the browser.",
+    },
+    {
         "version": "1.4.9",
         "date": "2026-10-19",
         "title": "Simpler public usage figures",

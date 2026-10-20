@@ -279,3 +279,49 @@ class MailerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobUsageTests(unittest.IsolatedAsyncioTestCase):
+    """A run finished on the server must reach the usage dashboard like any other."""
+
+    async def _run_job(self, updates, stop_after=None):
+        written: list[dict] = []
+
+        async def fake_write(**fields):
+            written.append(fields)
+
+        async def fake_updates(config, file_info):
+            for i, update in enumerate(updates):
+                if stop_after is not None and i == stop_after:
+                    jobs.request_stop("tok")
+                yield update
+
+        async def no_save(job_id, **fields):
+            return None
+
+        with patch("app.usage._write", fake_write), \
+                patch("app.routes.coding._coding_updates", fake_updates), \
+                patch.object(jobs, "_save", no_save), \
+                patch.object(jobs, "_write_rows", lambda *a: None), \
+                patch.object(jobs, "_write_config", lambda *a: None):
+            await jobs._run("job", "tok", {"runs_per_model": 3}, {}, "")
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+        return written
+
+    async def test_completed_job_is_recorded_with_every_coding(self):
+        written = await self._run_job([
+            {"type": "progress", "current": 9, "total": 9},
+            {"type": "complete", "total_rows": 3, "coded_rows": 3, "codings": 18, "file_path": ""},
+        ])
+        self.assertEqual([w["event"] for w in written], ["run", "run_complete"])
+        self.assertEqual(written[1]["status"], "completed")
+        self.assertEqual(written[1]["episodes_coded"], 18)
+        self.assertEqual(written[0]["run_id"], written[1]["run_id"])
+
+    async def test_stopped_job_is_recorded_as_stopped(self):
+        written = await self._run_job(
+            [{"type": "progress", "current": 1, "total": 9}] * 3, stop_after=1,
+        )
+        self.assertEqual(written[-1]["event"], "run_complete")
+        self.assertEqual(written[-1]["status"], "stopped")
