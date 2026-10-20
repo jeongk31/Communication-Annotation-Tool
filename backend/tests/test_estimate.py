@@ -31,8 +31,36 @@ class EstimateShapeTests(unittest.TestCase):
             variable_count=2, seconds_each=2.5, measured=False,
         )
         self.assertEqual(result["calls"], 720)
-        self.assertEqual(result["seconds"], 1800)
         self.assertFalse(result["timing_from_history"])
+
+    def test_a_second_model_adds_calls_but_not_time(self):
+        """Models code each episode concurrently, so time is per unit of work.
+
+        Adding a model doubles the calls and the bill without doubling the wait;
+        quoting it as twice as long would send people back to one model for the
+        wrong reason.
+        """
+        def at(models):
+            return estimate.build_estimate(
+                episodes=120, models=models, runs_per_model=3, prompt="x" * 800,
+                variable_count=2, seconds_each=2.5, measured=False,
+            )
+
+        one, two = at(["gpt-4.1"]), at(["gpt-4.1", "claude-sonnet-5"])
+        # 120 episodes x 3 passes = 360 units, whichever models are coding them.
+        self.assertEqual(one["seconds"], 900)
+        self.assertEqual(two["seconds"], 900)
+        self.assertEqual(two["calls"], one["calls"] * 2)
+
+    def test_repeat_runs_do_extend_the_time(self):
+        """Repeats of one model are sequential, so they are the thing that waits."""
+        def at(runs):
+            return estimate.build_estimate(
+                episodes=50, models=["gpt-4.1"], runs_per_model=runs, prompt="x",
+                variable_count=1, seconds_each=2, measured=True,
+            )
+
+        self.assertEqual(at(3)["seconds"], at(1)["seconds"] * 3)
 
     def test_token_totals_scale_with_the_call_count(self):
         one = estimate.build_estimate(
@@ -171,14 +199,14 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         return (start, start + timedelta(seconds=seconds), units, models)
 
     async def test_no_history_falls_back_and_says_so(self):
-        rate, measured = await estimate.seconds_per_call(self._Db([]), ["gpt-4o-mini"])
+        rate, measured = await estimate.seconds_per_unit(self._Db([]), ["gpt-4o-mini"])
         self.assertFalse(measured)
-        self.assertEqual(rate, estimate._FALLBACK_SECONDS_PER_CALL)
+        self.assertEqual(rate, estimate._FALLBACK_SECONDS_PER_UNIT)
 
     async def test_rate_is_taken_from_completed_runs(self):
         # 100 units in 300s is 3 seconds per call.
         db = self._Db([self._job(300, 100, ["gpt-4o-mini"])])
-        rate, measured = await estimate.seconds_per_call(db, ["gpt-4o-mini"])
+        rate, measured = await estimate.seconds_per_unit(db, ["gpt-4o-mini"])
         self.assertTrue(measured)
         self.assertEqual(rate, 3.0)
 
@@ -187,7 +215,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
             self._job(200, 100, ["m"]), self._job(300, 100, ["m"]),
             self._job(9000, 100, ["m"]),
         ])
-        rate, _ = await estimate.seconds_per_call(db, ["m"])
+        rate, _ = await estimate.seconds_per_unit(db, ["m"])
         self.assertEqual(rate, 3.0)  # the median, not the mean
 
     async def test_runs_of_other_models_are_ignored_when_possible(self):
@@ -195,13 +223,13 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
             self._job(100, 100, ["fast-model"]),
             self._job(900, 100, ["slow-model"]),
         ])
-        rate, _ = await estimate.seconds_per_call(db, ["slow-model"])
+        rate, _ = await estimate.seconds_per_unit(db, ["slow-model"])
         self.assertEqual(rate, 9.0)
 
     async def test_a_database_failure_degrades_to_the_default(self):
-        rate, measured = await estimate.seconds_per_call(self._Db([], fail=True), ["m"])
+        rate, measured = await estimate.seconds_per_unit(self._Db([], fail=True), ["m"])
         self.assertFalse(measured)
-        self.assertEqual(rate, estimate._FALLBACK_SECONDS_PER_CALL)
+        self.assertEqual(rate, estimate._FALLBACK_SECONDS_PER_UNIT)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """Runs LLM-based coding row by row with multi-model voting support."""
 
+import asyncio
 import json
 import re
 from collections import Counter
@@ -305,6 +306,52 @@ def _aggregate_results(
     return result
 
 
+async def _code_with_model(
+    p_info: dict[str, Any],
+    *,
+    prompt: str,
+    row_idx: int,
+    pass_num: int,
+    passes: int,
+    max_retries: int,
+) -> tuple[str, dict | None, list[str]]:
+    """One model's coding of one episode, retries included.
+
+    Returns the coder label, the parsed coding (None if every attempt failed)
+    and any messages to surface as errors. Problems come back as values rather
+    than exceptions so that one model failing never cancels the others coding
+    the same episode — each model's result stands on its own.
+    """
+    coder_label = f"{p_info['label']}__run{pass_num}" if passes > 1 else p_info["label"]
+    slot_params = p_info.get("params", {})
+    errors: list[str] = []
+    parsed = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = await p_info["instance"].complete(
+                prompt,
+                system_prompt="You are a precise data coder. Return only valid JSON.",
+                params={
+                    "temperature": slot_params.get("temperature", 0.1),
+                    "top_p":       slot_params.get("top_p", 1.0),
+                    "max_tokens":  slot_params.get("max_tokens", 2048),
+                },
+            )
+            parsed = _parse_llm_json(result["response"])
+            if parsed:
+                break
+            if attempt == max_retries:
+                errors.append(
+                    f"Row {row_idx + 1} [{coder_label}]: JSON parse failed after {max_retries} retries"
+                )
+        except Exception as e:
+            if attempt == max_retries:
+                errors.append(f"Row {row_idx + 1} [{coder_label}]: {e}")
+
+    return coder_label, parsed, errors
+
+
 async def run_coding(
     *,
     df: pd.DataFrame,
@@ -431,33 +478,29 @@ async def run_coding(
 
             prompt = _build_prompt(message, experiment_instructions, coding_instructions, codebook, participants, context_block)
 
-            for p_info in providers:
-                provider_inst = p_info["instance"]
-                coder_label = f"{p_info['label']}__run{pass_num}" if passes > 1 else p_info["label"]
-                parsed = None
-                slot_params = p_info.get("params", {})
-                for attempt in range(1, max_retries + 1):
-                    try:
-                        result = await provider_inst.complete(
-                            prompt,
-                            system_prompt="You are a precise data coder. Return only valid JSON.",
-                            params={
-                                "temperature": slot_params.get("temperature", 0.1),
-                                "top_p":       slot_params.get("top_p", 1.0),
-                                "max_tokens":  slot_params.get("max_tokens", 2048),
-                            },
-                        )
-                        parsed = _parse_llm_json(result["response"])
-                        if parsed:
-                            break
-                        if attempt == max_retries:
-                            yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{coder_label}]: JSON parse failed after {max_retries} retries"}
-                    except Exception as e:
-                        if attempt == max_retries:
-                            yield {"type": "error", "index": row_idx,
-                                   "message": f"Row {row_idx + 1} [{coder_label}]: {e}"}
+            # Every model codes this episode at the same time; repeated runs of
+            # one model stay sequential, because a pass is the outer loop. Models
+            # are normally different providers, so this overlaps independent rate
+            # limits rather than contending for one, and an episode costs about
+            # as long as its slowest model instead of all of them added up.
+            outcomes = await asyncio.gather(*(
+                _code_with_model(
+                    p_info,
+                    prompt=prompt,
+                    row_idx=row_idx,
+                    pass_num=pass_num,
+                    passes=passes,
+                    max_retries=max_retries,
+                )
+                for p_info in providers
+            ))
 
+            # gather returns results in the order its arguments were given, so
+            # the record stays in slot order however the calls interleaved. The
+            # output must not depend on which provider happened to answer first.
+            for coder_label, parsed, errors in outcomes:
+                for error_message in errors:
+                    yield {"type": "error", "index": row_idx, "message": error_message}
                 if parsed:
                     codings += 1
                     calls_by_episode[row_idx].append(parsed)

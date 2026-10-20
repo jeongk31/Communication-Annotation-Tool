@@ -78,12 +78,15 @@ class RunOrderingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_every_model_still_codes_every_episode_in_each_pass(self):
         order, _ = await self._collect(episodes=3, runs=2, models=2)
-        # Both models are asked within the same pass over an episode, and the
-        # whole dataset is swept twice.
-        self.assertEqual(
-            order,
-            [("e0", "m0"), ("e0", "m1"), ("e1", "m0"), ("e1", "m1"), ("e2", "m0"), ("e2", "m1")] * 2,
-        )
+
+        # The models code an episode concurrently, so which of them answers
+        # first is not fixed — only the grouping is. Both are asked within the
+        # same pass over an episode, and the dataset is swept twice.
+        self.assertEqual([episode for episode, _ in order], ["e0", "e0", "e1", "e1", "e2", "e2"] * 2)
+        for i in range(0, len(order), 2):
+            pair = order[i:i + 2]
+            self.assertEqual({label for _, label in pair}, {"m0", "m1"},
+                             f"both models should code {pair[0][0]} in this pass")
 
     async def test_progress_counts_every_pass_not_just_the_episodes(self):
         _, updates = await self._collect(episodes=5, runs=3)

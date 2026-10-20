@@ -32,16 +32,22 @@ _CHARS_PER_TOKEN = 4.0
 _OUTPUT_TOKENS_BASE = 15
 _OUTPUT_TOKENS_PER_VARIABLE = 8
 
-# Used only until this deployment has timed runs of its own. Deliberately on the
-# slow side: an estimate that runs under is more useful than one that runs over.
-_FALLBACK_SECONDS_PER_CALL = 2.5
+# Seconds for one unit of work — one episode on one pass, across however many
+# models are coding it concurrently. Used only until this deployment has timed
+# runs of its own. Deliberately on the slow side: an estimate that runs under is
+# more useful than one that runs over.
+_FALLBACK_SECONDS_PER_UNIT = 2.5
 
 # Timings older than this say little about how the providers behave today.
 _HISTORY_LIMIT = 40
 
 
-async def seconds_per_call(db, models: list[str]) -> tuple[float, bool]:
-    """Measured seconds per call for these models, and whether it is measured.
+async def seconds_per_unit(db, models: list[str]) -> tuple[float, bool]:
+    """Measured seconds per unit of work for these models, and whether measured.
+
+    A unit is one episode on one pass. ``total_episodes`` on a job counts units,
+    not calls, which is the right basis now that the models in a run code each
+    episode concurrently: adding a model does not lengthen a unit.
 
     Taken from this deployment's own completed runs rather than any published
     figure, so it reflects the real providers, prompts and network.
@@ -62,7 +68,7 @@ async def seconds_per_call(db, models: list[str]) -> tuple[float, bool]:
         )).all()
     except Exception:
         logger.warning("could not read run history for the estimate", exc_info=True)
-        return _FALLBACK_SECONDS_PER_CALL, False
+        return _FALLBACK_SECONDS_PER_UNIT, False
 
     wanted = {m for m in models if m}
     samples: list[float] = []
@@ -77,7 +83,7 @@ async def seconds_per_call(db, models: list[str]) -> tuple[float, bool]:
             samples.append(elapsed / units)
 
     if not samples:
-        return _FALLBACK_SECONDS_PER_CALL, False
+        return _FALLBACK_SECONDS_PER_UNIT, False
     samples.sort()
     return samples[len(samples) // 2], True  # median: one slow run should not dominate
 
@@ -107,14 +113,17 @@ def build_estimate(
     """
     runs = max(1, runs_per_model)
     slots = [m for m in models] or [""]
-    calls_per_model = max(0, episodes) * runs
-    calls = calls_per_model * len(slots)
+    # A unit of work is one episode on one pass. Every model codes it at the
+    # same time, so adding a model adds calls and cost but little wall-clock —
+    # which is why time is priced per unit and money per call.
+    work_units = max(0, episodes) * runs
+    calls = work_units * len(slots)
     per_input, per_output = estimate_tokens(prompt, variable_count)
 
     priced: list[dict[str, Any]] = []
     unpriced: list[str] = []
     for model in slots:
-        cost = prices.cost_for(model, per_input * calls_per_model, per_output * calls_per_model)
+        cost = prices.cost_for(model, per_input * work_units, per_output * work_units)
         if cost is None:
             unpriced.append(model)
         else:
@@ -129,7 +138,8 @@ def build_estimate(
         "input_tokens": per_input * calls,
         "output_tokens": per_output * calls,
         "tokens_per_call": per_input + per_output,
-        "seconds": round(calls * seconds_each),
+        # Units, not calls: the models in a run work concurrently.
+        "seconds": round(work_units * seconds_each),
         # False means the timing is a default rather than this deployment's own
         # history, which the dialog should say plainly.
         "timing_from_history": measured,
