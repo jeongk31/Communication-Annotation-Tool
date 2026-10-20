@@ -5,32 +5,56 @@ NYU Abu Dhabi for coding free-form communication with large language models (LLM
 It is designed primarily for communication data from economic experiments, although
 the workflow can support other structured content-analysis tasks.
 
-The current release is **CAT v1.2.0**.
+The current release is **CAT v1.4.11**. The site shows the major.minor version (v1.4);
+the full patch-level log is in `backend/app/releases.py` and on the admin dashboard's
+Version history.
 
 ## Version history
 
-### CAT v1.2.0
+### CAT v1.4
 
-- Added a **Rows to code** control in Step 1: code all rows, a random count, a random
-  percentage, or specific rows and ranges (for example `1-50, 75, 90-100`) directly in
-  the interface, without preparing a separate smaller file for a test run. The selected
-  rows carry through the preprocessing preview, coding, reruns, and generated packages.
-- Made dataset uploads and coding runs more reliable on networks with strict security
-  filtering, and added a clearer message (with a reference ID to share with IT) when a
-  request is blocked before it reaches CAT.
-- Added an in-app **Versions** tab and version badge.
+- **Server-side runs.** A coding run can finish on CAT's server instead of inside the
+  browser's connection, so a dropped network or closed tab no longer loses the work. The
+  run gets its own link, protected by an access key, showing live progress and the full
+  results view; the link and its results expire after 48 hours. CAT can email the link
+  when the run starts and when it finishes.
+- **Estimate before running.** Run Coding first shows the expected time, number of model
+  calls, token use, and an approximate cost priced from the providers' published rates.
+- **Models code in parallel.** With several models, each episode is sent to every model
+  at the same time, so a run takes about as long as its slowest model. Repeated runs of
+  one model stay sequential, and each repeat sweeps the whole dataset before the next
+  begins, so repeated measurements of one episode are not taken back-to-back.
+- **Accurate usage counts.** Runs and coded episodes are counted on the server, including
+  server-side runs, and "episodes coded" counts every coding (episodes × models × runs).
+- An Acknowledgements page, and a simpler public Usage Statistics page (visits and
+  countries).
 
-### CAT v1.1.0
+### CAT v1.3
 
-- Kept **Run Coding** and **Generate Package** available before setup is complete, with
-  submit-time validation and specific, actionable field-level messages for every missing
-  or conflicting setting.
-- Made validation action-aware (browser runs require an API key for every model; generated
-  packages do not) and cleared each section's errors as it is edited.
-- Applied the same inline validation to the column-mapping and codebook dialogs, removed
-  untouched codebook variables on save, and kept the coding action bar fixed in the viewport.
+- **Agreement statistics** in the results, run-summary PDF, and exported CSV: exact
+  agreement, Cohen's kappa, Gwet's AC1, and N, both within each model (across its
+  repeated runs) and between models.
+- A compact menu bar, public usage statistics with a world map, and an admin dashboard
+  with run outcomes, sessions, errors, and version history.
 
-### CAT v1.0.0
+### CAT v1.2
+
+- A **Rows to code** control in Step 1: code all rows, a random count, a random
+  percentage, or specific rows and ranges (for example `1-50, 75, 90-100`) without
+  preparing a separate smaller file. The selection carries through preprocessing,
+  coding, reruns, and generated packages.
+- Reliable uploads and coding runs on networks with strict security filtering: request
+  bodies are encoded so a gateway firewall does not mistake research text for an
+  attack, with a clear message (and a reference ID for IT) if a request is still blocked.
+
+### CAT v1.1
+
+- Full documentation of the CAT paper, citations, a privacy notice, and inter-coder
+  agreement.
+- Submit-time validation with specific, field-level messages for every missing or
+  conflicting setting.
+
+### CAT v1.0
 
 - Paper-aligned initial release: dataset upload, column mapping, episode construction,
   codebook design, browser and standalone-package coding, validation, reruns, and
@@ -57,12 +81,14 @@ data.
    a supported document-capable model.
 6. Configure models from OpenAI, Google Gemini, DeepSeek, Anthropic Claude, or xAI
    Grok, including model parameters and the number of calls.
-7. Run the task in the browser or generate a standalone local-execution package that
-   does not contain an API key. Browser runs can use multiple models and repeated calls,
-   with aggregation selected separately for each coding variable.
-8. Monitor episode-level progress, inspect validation issues, selectively rerun affected
-   episodes, review model-level inter-coder agreement when two or more models are used,
-   and use one button to download the complete results.
+7. Review the estimate of time, calls, tokens, and approximate cost, then run the task
+   in the browser, leave it to finish on CAT's server, or generate a standalone
+   local-execution package that does not contain an API key. Runs can use multiple
+   models and repeated calls, with aggregation selected separately for each coding
+   variable.
+8. Monitor progress, inspect validation issues, selectively rerun affected episodes,
+   review agreement within and between models, and use one button to download the
+   complete results.
 
 With one model call, the download is a CSV that preserves the order and columns of the
 uploaded source data and appends every coding variable. If several source rows form one
@@ -76,20 +102,23 @@ non-text aggregates and text responses. Finally, the archive contains one unchan
 call-level CSV for every individual run of every LLM. Categorical values are represented
 in aggregate files as separate binary columns (for example, `option_a`, `option_b`, and
 `option_c`), while their original labels remain unchanged in the individual-run files.
-When two or more models are used, CAT first aggregates repeated runs within each model,
-then calculates pairwise exact agreement rates and Cohen's kappa for every non-text
-aggregate output column. The tables appear in the Results panel and run-summary report,
-and the ZIP contains the same statistics in `inter_coder_agreement.csv`. Cohen's kappa
-is unweighted and treats each distinct numeric result as a nominal coded value. Statistics
-use observations for which both models have a value; kappa is undefined when expected
-agreement is 100%. CAT reports each variable separately and does not average coefficients
-across variables.
+CAT reports two kinds of agreement for every non-text output column. **Within a model**,
+the repeated runs of one model are compared with each other, a check on how consistently
+it answers; with more than two runs, the pairwise results are averaged (the mean of
+pairwise Cohen's kappa is Light's kappa). **Between models**, each model's runs are first
+aggregated to one value per episode and the models are then compared pairwise. Each
+comparison reports the exact agreement rate, unweighted Cohen's kappa, Gwet's AC1, and the
+number of paired episodes. The tables appear in the Results panel and run-summary report,
+and the ZIP contains the same statistics in `inter_coder_agreement.csv`. Each distinct
+numeric result is treated as a nominal coded value, statistics use episodes for which both
+coders have a value, and kappa is undefined when expected agreement is 100%. CAT reports
+each variable separately and does not average coefficients across variables.
 When a numeric mode has no unique winner, CAT uses the median; with an even number of
 responses, this is the average of the two middle values.
 
 ```text
 dataset_coded_results.zip
-├── inter_coder_agreement.csv      # present with 2+ models and non-text outputs
+├── inter_coder_agreement.csv      # repeated runs or 2+ models, non-text outputs
 ├── overall/
 │   ├── aggregated_results.csv     # present when non-text variables exist
 │   └── text_results.csv           # present when text variables exist
@@ -115,7 +144,8 @@ dataset_coded_results.zip
 
 The public production service runs on a university-hosted Red Hat Enterprise Linux
 server behind Nginx and HTTPS. The frontend and backend run as systemd-managed services,
-and PostgreSQL provides the persistent metadata store. Hostnames, credentials, internal
+and PostgreSQL provides the persistent metadata store. A systemd timer deploys the latest
+commit on `main` once its CI checks have passed (see `deploy/`). Hostnames, credentials, internal
 paths, and administrative details are intentionally excluded from public documentation.
 
 ## Repository structure
@@ -129,15 +159,23 @@ LLM_TOOL/
 │   ├── app/
 │   │   ├── main.py                # FastAPI application and registered routes
 │   │   ├── config.py              # Environment-based application settings
-│   │   ├── models/database.py     # Usage and contact-message database models
-│   │   ├── routes/                # Coding, exports, instructions, analytics, and contact APIs
-│   │   └── services/              # LLM execution, aggregation, and result generation
+│   │   ├── releases.py            # Release history; the single source of the version
+│   │   ├── jobs.py                # Server-side coding runs and their access-key links
+│   │   ├── usage.py               # Server-side counting of runs and downloads
+│   │   ├── estimate.py, prices.py # Pre-run time, call, token, and cost estimate
+│   │   ├── gzip_request.py        # Decodes encoded request bodies (firewall mitigation)
+│   │   ├── admin_template.py      # Admin dashboard page
+│   │   ├── models/database.py     # Database models
+│   │   ├── routes/                # Coding, instructions, analytics, and contact APIs
+│   │   └── services/              # LLM execution, aggregation, agreement, and results
 │   └── tests/                     # Backend test suite
 ├── frontend/
 │   ├── src/app/                   # Next.js interface and workflow components
 │   ├── public/                    # Logos, tour graphics, and demonstration video
 │   ├── package.json
 │   └── package-lock.json
+├── deploy/                        # Production auto-deploy script and systemd units
+├── CLAUDE.md                      # Conventions for contributors and AI coding agents
 └── .github/workflows/ci.yml       # Automated backend and frontend checks
 ```
 
@@ -145,7 +183,7 @@ LLM_TOOL/
 
 - Python 3.12
 - Node.js 22
-- PostgreSQL
+- PostgreSQL (production runs PostgreSQL 18)
 - An API key for each LLM provider used during browser-based coding
 
 API keys are entered for individual runs. CAT does not write them to its database,
@@ -193,8 +231,13 @@ The local interface is available at `http://localhost:3000`. By default, the fro
 forwards API requests to `http://localhost:8000`. Set `NEXT_PUBLIC_API_URL` before
 starting the frontend if the backend uses a different address.
 
-The database tables used for usage events and contact messages are created
-automatically when the backend starts with a valid PostgreSQL connection.
+The database tables are created automatically when the backend starts with a valid
+PostgreSQL connection.
+
+Server-side runs use two optional groups of environment settings (see
+`backend/app/config.py`): `PUBLIC_BASE_URL`, the public site address used to build run
+links in email, and the `SMTP_*` settings. Without `SMTP_HOST`, CAT sends no email;
+server-side runs still work and their link and access key are shown on screen.
 
 ## Tests and verification
 
@@ -228,15 +271,24 @@ and run the complete test suite before committing the result.
   communication episodes, coding manual, and selected context required for coding.
 - CAT uses temporary server-side working files for uploaded datasets and results.
   Resetting the project or replacing a dataset requests cleanup, and scheduled cleanup
-  removes temporary working files after the 24-hour threshold.
+  removes temporary working files after the 24-hour threshold. Results of a server-side
+  run are kept for the 48 hours its link is valid, then removed.
+- A server-side run is opened with its link and an access key; only a hash of the key is
+  stored. Its API key is held in memory while the run is going and never written to
+  disk, so a server restart ends the run rather than resuming it. An email, when
+  requested, carries the link and key, never the results.
 - The browser stores the current project configuration and a local copy of the uploaded
   dataset so work can be restored after a refresh. Resetting the project clears this
   browser copy.
 - CAT asks for consent before collecting optional usage analytics. Acceptance enables
   the disclosed browser, IP-derived location, and configuration metadata. Rejection
   records only one anonymous visit count without a location or browser identifier.
-- CAT stores consented operational metadata and contact-form submissions in PostgreSQL.
-  It does not store dataset contents or API keys in that database.
+- The server records each coding run and package download for usage statistics: the
+  models, settings, counts, outcome, and duration. These server records carry no IP
+  address, location, session identifier, or browser identifier.
+- CAT stores this metadata, consented analytics, server-side run status (counters and
+  model names), error logs, and contact-form submissions in PostgreSQL. It does not store
+  dataset contents or API keys in that database.
 
 See the complete [privacy notice](PRIVACY.md).
 
@@ -267,7 +319,9 @@ and Jeong Kyu Lee. The DOI will be added when one is assigned.
 Do not commit directly to `main`. Create a branch from the latest `main`, make one
 focused change, and open a pull request describing what changed and how it was tested.
 Before opening the pull request, run the backend tests and the frontend audit, lint, and
-production build commands shown above. Pull requests can be merged only after the
+production build commands shown above. Every merge to `main` deploys, so each pull request
+adds a new entry at the top of `RELEASES` in `backend/app/releases.py` and updates the
+version in `backend/tests/test_version.py` and `frontend/package.json`; see `CLAUDE.md`. Pull requests can be merged only after the
 required Backend and Frontend CI checks pass and all review conversations are resolved.
 
 Do not include API keys, participant data, server credentials, local environment files,

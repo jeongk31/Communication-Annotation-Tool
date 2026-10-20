@@ -79,6 +79,26 @@ obvious from the code alone. Applies to any AI assistant or human contributor.
 - Email carries the link, never the results: attachments would move coded participant
   communication off the server permanently, where the 48-hour expiry means nothing.
 
+## Coding-run concurrency (`services/coding_runner.py`)
+
+- Within one episode on one pass, **every model is called concurrently** (`asyncio.gather`
+  over the provider slots). **Repeats of one model stay sequential** — a pass is the outer
+  loop — because repeated runs are meant to be independent measurements and firing them
+  together would both correlate them and pile onto one provider's rate limit. Peak
+  concurrency is therefore the number of model slots, never × runs.
+- `_code_with_model` **returns** errors instead of raising, so one provider being down costs
+  its own column rather than cancelling the models coding the same episode. Keep it that way:
+  an exception escaping it would propagate out of the `gather` and kill the run.
+- Results are appended in **slot order**, not answer order (`gather` preserves argument
+  order). The CSV must not depend on which provider happened to reply first.
+- Consequently a unit of work (one episode × one pass) costs about as long as its *slowest*
+  model, not the sum. `estimate.seconds_per_unit` is per unit, and `build_estimate` multiplies
+  time by **units** (episodes × runs) while costing **calls** (× models). Adding a model adds
+  spend, not wall-clock — don't "fix" the estimate by multiplying time by the model count.
+- All providers must use genuinely async clients (`AsyncOpenAI`, `AsyncAnthropic`,
+  `genai.Client().aio`). A blocking SDK call inside `async def` would serialise the gather
+  and silently undo all of this.
+
 ## Other
 
 - No SQLite fallback: the backend requires a real `DATABASE_URL` (PostgreSQL). Only usage

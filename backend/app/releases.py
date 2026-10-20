@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.11",
+        "date": "2026-10-20",
+        "title": "Models code in parallel",
+        "notes": "When a run uses more than one model, they now code each episode at the same time instead of one after another, so a run with three models takes about as long as its slowest model rather than all three added together. Repeated runs of the same model stay sequential, as independent measurements should be. One provider failing no longer holds up the others, and the estimate no longer counts extra models as extra waiting time. The README is brought up to date.",
+    },
+    {
         "version": "1.4.10",
         "date": "2026-10-20",
         "title": "Usage counts every coding, and server-side runs are counted",

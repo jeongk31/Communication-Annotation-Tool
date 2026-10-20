@@ -1109,7 +1109,7 @@ async def estimate_run(request: Request, req: EstimateRequest, db: AsyncSession 
     )
 
     models = [str(slot.get("model", "")) for slot in model_slots if isinstance(slot, dict)]
-    seconds_each, measured = await estimate_mod.seconds_per_call(db, models)
+    seconds_each, measured = await estimate_mod.seconds_per_unit(db, models)
     return estimate_mod.build_estimate(
         episodes=len(grouped),
         models=models,
