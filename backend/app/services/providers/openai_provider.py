@@ -10,17 +10,20 @@ class OpenAICompatibleProvider(LLMProvider):
     """Works with OpenAI, xAI, and DeepSeek through OpenAI-compatible APIs."""
 
     _PROVIDER_CONTROLLED_SAMPLING_MODELS = {
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
         "gpt-6-astra",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
         "gpt-6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
         "deepseek-v4-pro",
-        "deepseek-v4-flash",
+        "deepseek-flash",
     }
     _MAX_COMPLETION_TOKEN_MODELS = {
-        "gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna",
+        "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna",
         "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
     }
 

@@ -837,44 +837,50 @@ function validateCodedRows(rows: CodedRow[], vars: ExpandedVar[]): ValidationRep
 const PROVIDERS: { value: string; label: string; models: { value: string; label: string; noTemperature?: boolean; noTopP?: boolean; temperatureMax?: number }[] }[] = [
   {
     value: "openai", label: "OpenAI", models: [
+      { value: "gpt-6.2-astra", label: "GPT-6.2 Astra", noTemperature: true, noTopP: true },
+      { value: "gpt-6.2-sol", label: "GPT-6.2 Sol", noTemperature: true, noTopP: true },
       { value: "gpt-6-astra", label: "GPT-6 Astra", noTemperature: true, noTopP: true },
       { value: "gpt-6.1-sol", label: "GPT-6.1 Sol", noTemperature: true, noTopP: true },
+      { value: "gpt-6.1-terra", label: "GPT-6.1 Terra", noTemperature: true, noTopP: true },
       { value: "gpt-6-luna", label: "GPT-6 Luna", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra", noTemperature: true, noTopP: true },
       { value: "gpt-5.6-luna", label: "GPT-5.6 Luna", noTemperature: true, noTopP: true },
       { value: "gpt-4.1", label: "GPT-4.1" },
       { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
-      { value: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
     ],
   },
   {
     value: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-4-carbon", label: "Gemini 4 Carbon" },
+      { value: "gemini-4-neon", label: "Gemini 4 Neon" },
+      { value: "gemini-4-argon", label: "Gemini 4 Argon" },
+      { value: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen" },
       { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
-      { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
       { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
-      { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
       { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
       { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
-      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
       { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
     ],
   },
   {
     value: "deepseek", label: "DeepSeek", models: [
       { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro", noTemperature: true, noTopP: true },
-      { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash", noTemperature: true, noTopP: true },
+      { value: "deepseek-flash", label: "DeepSeek V4.1 Flash", noTemperature: true, noTopP: true },
     ],
   },
   {
     value: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-fable-5-2", label: "Claude Fable 5.2", noTemperature: true, noTopP: true },
       { value: "claude-fable-5-1", label: "Claude Fable 5.1", noTemperature: true, noTopP: true },
       { value: "claude-fable-5", label: "Claude Fable 5", noTemperature: true, noTopP: true },
+      { value: "claude-opus-5-5", label: "Claude Opus 5.5", noTemperature: true, noTopP: true },
       { value: "claude-opus-5", label: "Claude Opus 5", noTemperature: true, noTopP: true },
+      { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", noTemperature: true, noTopP: true },
       { value: "claude-sonnet-5", label: "Claude Sonnet 5", noTemperature: true, noTopP: true },
+      { value: "claude-haiku-5-5", label: "Claude Haiku 5.5", noTemperature: true, noTopP: true },
       { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", noTopP: true, temperatureMax: 1 },
     ],
   },
@@ -894,8 +900,11 @@ const PROVIDERS: { value: string; label: string; models: { value: string; label:
 const PDF_MODELS: { provider: string; label: string; models: { value: string; label: string }[] }[] = [
   {
     provider: "openai", label: "OpenAI", models: [
+      { value: "gpt-6.2-astra", label: "GPT-6.2 Astra" },
+      { value: "gpt-6.2-sol", label: "GPT-6.2 Sol" },
       { value: "gpt-6-astra", label: "GPT-6 Astra" },
       { value: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
+      { value: "gpt-6.1-terra", label: "GPT-6.1 Terra" },
       { value: "gpt-6-luna", label: "GPT-6 Luna" },
       { value: "gpt-5.6-sol", label: "GPT-5.6 Sol" },
       { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
@@ -905,25 +914,29 @@ const PDF_MODELS: { provider: string; label: string; models: { value: string; la
   },
   {
     provider: "gemini", label: "Google (Gemini)", models: [
+      { value: "gemini-4-carbon", label: "Gemini 4 Carbon" },
+      { value: "gemini-4-neon", label: "Gemini 4 Neon" },
+      { value: "gemini-4-argon", label: "Gemini 4 Argon" },
+      { value: "gemini-4-hydrogen", label: "Gemini 4 Hydrogen" },
       { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
-      { value: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
       { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
-      { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
       { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
       { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash (Preview)" },
-      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
       { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
     ],
   },
   {
     provider: "anthropic", label: "Anthropic (Claude)", models: [
+      { value: "claude-fable-5-2", label: "Claude Fable 5.2" },
       { value: "claude-fable-5-1", label: "Claude Fable 5.1" },
       { value: "claude-fable-5", label: "Claude Fable 5" },
+      { value: "claude-opus-5-5", label: "Claude Opus 5.5" },
       { value: "claude-opus-5", label: "Claude Opus 5" },
+      { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
       { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+      { value: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
       { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
     ],
   },
@@ -1062,8 +1075,8 @@ const EMPTY_SLOT: ModelSlot = {
 
 const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
   openai: "gpt-4.1-mini",
-  gemini: "gemini-3.7-flash",
-  deepseek: "deepseek-v4-flash",
+  gemini: "gemini-3.8-flash",
+  deepseek: "deepseek-flash",
   anthropic: "claude-sonnet-5",
   xai: "grok-4.5",
 };

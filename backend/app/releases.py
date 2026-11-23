@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.12",
+        "date": "2026-11-23",
+        "title": "Newest models from every provider, with current prices",
+        "notes": "Adds Claude Opus 5.5, Fable 5.2, Sonnet 5.5 and Haiku 5.5; GPT-6.2 Astra, GPT-6.2 Sol and GPT-6.1 Terra; Gemini 4 Carbon, Neon, Argon and Hydrogen; and DeepSeek V4.1 Flash, which replaces the retired V4 Flash. Removes models their providers have retired or now silently answer with a different model (GPT-4.1 Nano, Gemini 3.7 Flash, 3.5 Flash, 2.5 Pro and 2.5 Flash), so a results column always comes from the model it is named after; a saved setup that used one falls back to that provider's default. Every model offered now has a cost estimate, re-checked against each provider's pricing page on 23 November 2026, including Claude Opus 5 and Fable 5, Grok 4.5 and 4.3, and Gemini 3 Flash, which previously showed none. Introductory rates that end on a published date (Gemini 4 Carbon and Argon on 1 December, Gemini 3.8 and 3.6 Flash on 1 January) switch to the standard rate on that day automatically."
+    },
+    {
         "version": "1.4.11",
         "date": "2026-10-20",
         "title": "Models code in parallel",
