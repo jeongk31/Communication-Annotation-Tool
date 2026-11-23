@@ -26,15 +26,19 @@ class ProviderSelectionTests(unittest.TestCase):
 
     def test_auxiliary_provider_registry_matches_public_catalog(self):
         expected_models = {
-            "gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna",
+            "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra",
+            "gpt-6-luna",
             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-            "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
-            "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash",
-            "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+            "gpt-4.1", "gpt-4.1-mini",
+            "gemini-4-carbon", "gemini-4-neon", "gemini-4-argon", "gemini-4-hydrogen",
+            "gemini-3.8-flash", "gemini-3.6-flash",
+            "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
             "gemini-3.1-pro-preview", "gemini-3-flash-preview",
-            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite",
-            "deepseek-v4-pro", "deepseek-v4-flash",
-            "claude-fable-5-1", "claude-fable-5", "claude-opus-5", "claude-sonnet-5",
+            "gemini-2.5-flash-lite",
+            "deepseek-v4-pro", "deepseek-flash",
+            "claude-fable-5-2", "claude-fable-5-1", "claude-fable-5",
+            "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-sonnet-5",
+            "claude-haiku-5-5",
             "claude-haiku-4-5-20251001", "grok-4.7", "grok-4.6", "grok-4.5", "grok-4.3",
         }
         self.assertEqual(set(PROVIDER_REGISTRY), expected_models)
@@ -56,7 +60,8 @@ class AnthropicParameterTests(unittest.IsolatedAsyncioTestCase):
         fake_client = SimpleNamespace(messages=SimpleNamespace(create=create))
 
         with patch("app.services.providers.anthropic_provider.anthropic.AsyncAnthropic", return_value=fake_client):
-            for model in ("claude-fable-5", "claude-opus-5", "claude-sonnet-5"):
+            for model in ("claude-fable-5-2", "claude-fable-5", "claude-opus-5-5", "claude-opus-5",
+                          "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5"):
                 with self.subTest(model=model):
                     create.reset_mock()
                     provider = AnthropicProvider("test-key", model)
@@ -153,7 +158,7 @@ class OpenAICompatibleParameterTests(unittest.IsolatedAsyncioTestCase):
             return_value=self._fake_client(create),
         ):
             provider = OpenAICompatibleProvider(
-                "test-key", "deepseek-v4-flash", base_url="https://api.deepseek.com"
+                "test-key", "deepseek-flash", base_url="https://api.deepseek.com"
             )
             await provider.complete(
                 "prompt", params={"temperature": 0.2, "top_p": 0.8, "max_tokens": 50}

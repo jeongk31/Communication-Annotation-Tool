@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/test")
 
@@ -123,15 +123,15 @@ class CostTests(unittest.TestCase):
         self.assertEqual(result["unpriced_models"], [])
 
     def test_each_model_is_priced_at_its_own_rate(self):
-        cheap = self._estimate(["gpt-4.1-nano"])["cost_usd"]
+        cheap = self._estimate(["gpt-6-luna"])["cost_usd"]
         dear = self._estimate(["gpt-6-astra"])["cost_usd"]
         self.assertGreater(dear, cheap * 50)
 
     def test_a_mixed_run_adds_the_models_together(self):
-        both = self._estimate(["gpt-4.1", "gpt-4.1-nano"])
+        both = self._estimate(["gpt-4.1", "gpt-6-luna"])
         alone = self._estimate(["gpt-4.1"])["cost_usd"]
-        nano = self._estimate(["gpt-4.1-nano"])["cost_usd"]
-        self.assertAlmostEqual(both["cost_usd"], alone + nano, places=4)
+        luna = self._estimate(["gpt-6-luna"])["cost_usd"]
+        self.assertAlmostEqual(both["cost_usd"], alone + luna, places=4)
 
     def test_repeat_runs_multiply_the_cost(self):
         one = self._estimate(["gpt-4.1"], runs_per_model=1)["cost_usd"]
@@ -162,15 +162,52 @@ class CostTests(unittest.TestCase):
         unpriced = set(PROVIDER_REGISTRY) - set(prices.PRICES)
         self.assertEqual(
             unpriced,
-            {"claude-opus-5", "claude-fable-5", "gemini-3.7-flash", "gemini-3.5-flash",
-             "gemini-3-flash-preview", "grok-4.5", "grok-4.3"},
+            set(),
             "a model was added or removed without revisiting app/prices.py",
         )
 
+    def test_every_price_belongs_to_a_model_the_interface_offers(self):
+        """A rate left behind for a removed model is a rate nobody rechecks."""
+        from app.services.providers import PROVIDER_REGISTRY
+
+        self.assertEqual(set(prices.PRICES) - set(PROVIDER_REGISTRY), set())
+        self.assertEqual(set(prices.PRICE_CHANGES) - set(prices.PRICES), set())
+
     def test_no_price_is_zero_or_negative(self):
-        for model, (rate_in, rate_out) in prices.PRICES.items():
+        rates = list(prices.PRICES.items()) + [
+            (model, rate) for model, changes in prices.PRICE_CHANGES.items() for _, rate in changes
+        ]
+        for model, (rate_in, rate_out) in rates:
             self.assertGreater(rate_in, 0, model)
             self.assertGreater(rate_out, 0, model)
+
+
+class PriceChangeTests(unittest.TestCase):
+    """An announced rate change takes effect on its own date, not when someone
+    remembers to edit the table."""
+
+    def test_introductory_rate_applies_up_to_the_last_day(self):
+        self.assertEqual(
+            prices.price_for("gemini-4-carbon", today=date(2026, 11, 30)), (2.00, 10.00)
+        )
+
+    def test_later_rate_applies_from_the_published_date(self):
+        self.assertEqual(
+            prices.price_for("gemini-4-carbon", today=date(2026, 12, 1)), (4.00, 20.00)
+        )
+        self.assertEqual(
+            prices.price_for("gemini-3.8-flash", today=date(2027, 1, 1)), (1.50, 7.50)
+        )
+
+    def test_a_model_with_no_scheduled_change_keeps_its_rate(self):
+        self.assertEqual(
+            prices.price_for("gpt-4.1", today=date(2030, 1, 1)), (2.00, 8.00)
+        )
+
+    def test_change_dates_are_valid_and_in_order(self):
+        for model, changes in prices.PRICE_CHANGES.items():
+            dates = [date.fromisoformat(d) for d, _ in changes]
+            self.assertEqual(dates, sorted(dates), model)
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):

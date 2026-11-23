@@ -8,25 +8,27 @@ router = APIRouter()
 # Keep in sync with the PDF_MODELS list in the frontend.
 PDF_CAPABLE_MODELS = {
     "openai": {
-        "gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna",
+        "gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-terra", "gpt-6-luna",
         "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-4.1",
     },
     "gemini": {
+        "gemini-4-carbon",
+        "gemini-4-neon",
+        "gemini-4-argon",
+        "gemini-4-hydrogen",
         "gemini-3.8-flash",
-        "gemini-3.7-flash",
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
         "gemini-3.1-pro-preview",
         "gemini-3-flash-preview",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
     },
     "anthropic": {
-        "claude-fable-5-1", "claude-fable-5", "claude-opus-5",
-        "claude-sonnet-5", "claude-haiku-4-5-20251001",
+        "claude-fable-5-2", "claude-fable-5-1", "claude-fable-5",
+        "claude-opus-5-5", "claude-opus-5",
+        "claude-sonnet-5-5", "claude-sonnet-5",
+        "claude-haiku-5-5", "claude-haiku-4-5-20251001",
     },
 }
 
