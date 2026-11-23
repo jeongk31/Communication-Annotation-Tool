@@ -39,6 +39,14 @@ const CONTRIBUTORS: Contributor[] = [
       "University of Michigan",
     ],
   },
+  {
+    name: "Istiak Ahmed",
+    role: "Ph.D. Candidate",
+    affiliation: [
+      "Department of Economics",
+      "University of Virginia",
+    ],
+  },
 ];
 
 export default function Acknowledgements() {

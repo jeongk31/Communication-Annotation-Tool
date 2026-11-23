@@ -13,6 +13,12 @@ Dates for entries up to 1.2.4 were reconstructed from the git merge history on
 
 RELEASES = [
     {
+        "version": "1.4.13",
+        "date": "2026-11-23",
+        "title": "Istiak Ahmed added to the acknowledgements",
+        "notes": "The Acknowledgements page now thanks Istiak Ahmed (Department of Economics, University of Virginia) for feedback on CAT.",
+    },
+    {
         "version": "1.4.12",
         "date": "2026-11-23",
         "title": "Newest models from every provider, with current prices",
